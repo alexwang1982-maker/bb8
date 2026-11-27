@@ -1,0 +1,10 @@
+_snapshot/
+_isolated/
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+session_threads.json
+*.log
+power_reminder_state.json
