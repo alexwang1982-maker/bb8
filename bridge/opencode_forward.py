@@ -40,7 +40,7 @@ def _read_target():
             return sid
     except Exception:
         pass
-    return "ses-REDACTED"  # 默认：BB8语音指令通道专用会话
+    return ""  # 未配置会话 ID 时不转发（真实 ID 只能来自本机 forward_target.txt，不提交）
 SID = _read_target()
 
 # 2026-11-22 二次修正：用户明确要"模式切换"语义——

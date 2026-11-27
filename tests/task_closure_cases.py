@@ -34,7 +34,7 @@ TOOLS = [
             "query": {"type": "string"}, "skill": {"type": "string"},
             "idempotency_key": {"type": "string"}, "step_id": {"type": "string"},
             "depends_on": {"type": "string"}, "expected_marker": {"type": "string"},
-        }, "required": ["query"]}}},
+        }, "required": ["query", "step_id", "expected_marker"]}}},
     {"type": "function", "function": {
         "name": "check_task",
         "description": "按真实任务 ID 查询四重成功校验、状态、error、outbox 和历史 attempt。",
@@ -49,7 +49,8 @@ PERSONA = (
     "任务必须通过 submit_task/check_task 工具处理，工具返回什么就如实说什么。"
     "不要自行判断技能是否可用，也不要说工具不存在；技能可用性由 submit_task 工具判定，你必须先调用它。"
     "查询任务状态必须调用 check_task，不许凭记忆回答。"
-    "多步骤必须给 step_id、depends_on、expected_marker；已成功步骤不要重复。"
+    "每次提交都必须给 step_id 和 expected_marker；依赖任务还必须给 depends_on。"
+    "已成功步骤不要重复。"
     "只有 status=succeeded、error 为空、exit_code=0、结果标记出现才算完成。"
 )
 
@@ -161,6 +162,24 @@ def outbox(tid):
     return ((api("/tasks/result?id=" + urllib.parse.quote(tid)).get("json") or {}).get("outbox") or [])
 
 
+def wait_outbox_delivered(tid, marker="", seconds=90):
+    """Wait until the result_outbox row is really delivered to the receiver.
+
+    The T6 failure fixture read the outbox too early: delivery is asynchronous,
+    so a Brain turn could drain no pending result and inject no context. This
+    helper makes the fixture wait on the external fact before starting the turn.
+    """
+    end = time.time() + seconds
+    while time.time() < end:
+        rows = outbox(tid) if tid else []
+        hit = [o for o in rows if o.get("delivered") == 1 and
+               (not marker or marker in str((o.get("payload_json") or {}).get("stdout") or ""))]
+        if hit:
+            return hit
+        time.sleep(1)
+    return []
+
+
 def events(tid):
     return ((api("/tasks/events?id=" + urllib.parse.quote(tid)).get("json") or {}).get("events") or [])
 
@@ -175,8 +194,10 @@ def stable_query(marker):
             "不要写任何文件，也不要调用文件工具。第一行必须原样输出标记 %s。" % marker)
 
 
-def submit_direct(key, step_id, query, skill="document-to-action-items", marker="",
+def submit_direct(key, step_id, query, skill="document-to-action-items", marker=None,
                   max_attempts=1, device_id=""):
+    if not str(marker or "").strip():
+        raise ValueError("test fixture must supply a valid expected_marker")
     payload = {"query": query, "skills": skill, "run_budget": 60}
     if marker:
         payload["_expected_marker"] = marker
@@ -224,7 +245,7 @@ def case_single_failure(env):
     step = "STEP-FAIL-" + env.tag
     key = "closure-fail-" + env.tag
     sub = submit_direct(key, step, "intentional real skill resolution failure",
-                       skill="__definitely_not_a_real_skill__", max_attempts=1)
+                       skill="__definitely_not_a_real_skill__", marker=env.marker("FAIL"), max_attempts=1)
     tid = (sub.get("json") or {}).get("task", {}).get("id", "")
     v = wait_verify(tid) if tid else {}
     ob = outbox(tid) if tid else []
@@ -303,7 +324,7 @@ def case_failure_adjustment(env):
     tid_a = task_a["id"]
     step_bad = "ADJ-BAD-" + env.tag
     sbad = submit_direct("closure-adj-bad-" + env.tag, step_bad, "real skill failure",
-                         skill="__definitely_not_a_real_skill__", max_attempts=1)
+                         skill="__definitely_not_a_real_skill__", marker=env.marker("FAIL"), max_attempts=1)
     tid_bad = (sbad.get("json") or {}).get("task", {}).get("id", "")
     vbad = wait_verify(tid_bad) if tid_bad else {}
     r1 = chat(usermsg("这是工具调用测试：你必须调用 check_task 查询失败任务 %s，"
@@ -378,10 +399,10 @@ def case_idempotency(env):
 def case_outbox_reinject(env):
     """T6 probe: outbox delivery -> Brain context injection.
 
-    Known test-fixture race (see evidence/ROUND4_FINAL_REPORT.md): a direct submit
-    followed immediately by a chat can call drain_task_results() before the
-    asynchronous delivery loop appends the result. The two recorded failures were
-    stopped per the 2-consecutive-failure rule; system T6 is proven by round4_r3.
+    The two recorded failures (round4_t6 / round4_t6b) were stopped per the
+    2-consecutive-failure rule and are preserved unchanged. This fixture now waits
+    for outbox delivered=1 before starting the Brain turn, so the injection check
+    is not racing the asynchronous delivery loop.
     """
     t0 = time.time()
     marker = env.marker("T6")
@@ -391,15 +412,19 @@ def case_outbox_reinject(env):
                         device_id=SESSION_KEY)
     tid = (sub.get("json") or {}).get("task", {}).get("id", "")
     v = wait_verify(tid, marker) if tid else {}
+    # FIX: wait for the external delivery fact first. The old fixture started the
+    # Brain turn before this loop had appended the result to session_threads.json.
+    pre_brain_delivered = wait_outbox_delivered(tid, marker) if tid else []
+    env.dump("t6-pre-brain-outbox.raw.json", {"delivered_before_chat": pre_brain_delivered,
+                                              "session_key": SESSION_KEY})
     prompt = ("这是工具调用测试：你必须调用 check_task 查询真实任务 %s，"
               "并依据工具返回和已注入的任务结果如实报告 status、exit_code 和结果标记 %s。" %
               (tid, marker))
     r = chat(usermsg(prompt))
     env.dump("t6-brain.raw.json", r)
-    # Delivery loop runs asynchronously; read the outbox AFTER the Brain turn so the
-    # delivered flag and the injected context are both final external facts.
     ob = outbox(tid) if tid else []
     env.dump("t6-outbox.raw.json", {"submit": sub, "verification": v, "outbox": ob,
+                                    "delivered_before_chat": pre_brain_delivered,
                                     "session_key": SESSION_KEY,
                                     "events": events(tid) if tid else []})
     injected = []
@@ -417,11 +442,13 @@ def case_outbox_reinject(env):
     ok = bool(v.get("verified") and delivered and injected and logs and
               re.search(r"succeeded|成功|exit_code|" + re.escape(marker), reply, re.I))
     return result(ok, "T6-outbox-reinject",
-                  ["t6-outbox.raw.json", "t6-brain.raw.json", "t6-injection.raw.json",
+                  ["t6-pre-brain-outbox.raw.json", "t6-outbox.raw.json",
+                   "t6-brain.raw.json", "t6-injection.raw.json",
                    "bridge.out.log:task result -> Brain context"],
                   {"task_id": tid, "step_id": step, "status": v.get("status"),
                    "verified": v.get("verified"), "exit_code": (v.get("result") or {}).get("exit_code"),
-                   "outbox_total": len(ob), "delivered_verified": len(delivered),
+                   "outbox_total": len(ob), "delivered_before_chat": len(pre_brain_delivered),
+                   "delivered_verified": len(delivered),
                    "injected_dumps": injected, "brain_context_logs": len(logs),
                    "reply": reply[:250]}, time.time() - t0)
 

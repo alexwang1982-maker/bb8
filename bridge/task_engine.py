@@ -764,23 +764,29 @@ def recover() -> int:
 def submit(idempotency_key: str, kind: str, payload: dict, device_id: str = "",
            priority: int = 0, max_attempts: int | None = None,
            retry_policy: str = "unknown", step_id: str = "") -> dict:
+    key = str(idempotency_key or "").strip()
+    if not key:
+        raise ValueError("idempotency_key required")
+    p = dict(payload or {})
+    if not valid_marker(p.get("_expected_marker")):
+        raise ValueError("expected_marker required: task cannot be submitted without a usable result marker")
+    sid = str(step_id or "").strip()
+    if not sid:
+        raise ValueError("step_id required: every submitted step must be identifiable")
     now = time.time()
     tid = "tsk_" + uuid.uuid4().hex[:16]
     attempts = max_attempts or MAX_ATTEMPTS
     policy = retry_policy if retry_policy in RETRY_POLICIES else "unknown"
-    p = dict(payload or {})
     p["_device_id"] = device_id
-    sid = str(step_id or "").strip()
-    if sid:
-        p["_step_id"] = sid
+    p["_step_id"] = sid
     with _tx() as c:
-        existing = c.execute("SELECT * FROM tasks WHERE idempotency_key=?", (idempotency_key,)).fetchone()
+        existing = c.execute("SELECT * FROM tasks WHERE idempotency_key=?", (key,)).fetchone()
         if existing:
             return {"task": _row_dict(existing), "duplicate": True}
         c.execute("""INSERT INTO tasks(id,idempotency_key,kind,payload_json,status,max_attempts,
                      priority,retry_policy,next_run_at,created_at,updated_at,step_id)
                      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (tid, idempotency_key, kind, json.dumps(p, ensure_ascii=False), QUEUED,
+                  (tid, key, kind, json.dumps(p, ensure_ascii=False), QUEUED,
                    attempts, int(priority), policy, now, now, now, sid or None))
         _event_tx(c, tid, "submitted", {"kind": kind, "device_id": device_id,
                                         "retry_policy": policy, "step_id": sid or None})
@@ -804,6 +810,21 @@ def find_step(step_id: str) -> dict | None:
     return _row_dict(row) if row else None
 
 
+def valid_marker(value) -> bool:
+    """A marker is usable only when it is a non-blank string after trimming."""
+    return bool(str(value or "").strip())
+
+
+def marker_missing(expected_marker, stdout) -> bool:
+    """True when real output does not contain a usable expected marker.
+
+    Both an absent/blank marker and a non-matching marker are failures. A task can
+    never be called verified on exit code alone.
+    """
+    expected = str(expected_marker or "").strip()
+    return (not expected) or (expected not in str(stdout or ""))
+
+
 def find_step_success(step_id: str, marker: str = "") -> dict | None:
     """Find an already verified-successful task for a step, so adjustments never replay it."""
     sid = str(step_id or "").strip()
@@ -819,7 +840,7 @@ def find_step_success(step_id: str, marker: str = "") -> dict | None:
     return None
 
 
-def verified_status(task_id: str, marker: str = "") -> dict:
+def verified_status(task_id: str, marker: str | None = None) -> dict:
     """External-fact judgement for a task.
 
     A task counts as verified success ONLY when all four hold:
@@ -852,7 +873,10 @@ def verified_status(task_id: str, marker: str = "") -> dict:
             payload = json.loads(payload)
         except Exception:
             payload = {}
-    expected = str(marker or (payload or {}).get("_expected_marker") or "").strip()
+    # None means "no override supplied": use the marker stored with the task.
+    # An explicitly supplied blank/wrong marker must fail, never silently fall back.
+    expected = str((payload or {}).get("_expected_marker") or "").strip() \
+        if marker is None else str(marker).strip()
     st = str(t.get("status") or "")
     terminal = st in (SUCCEEDED, FAILED, UNKNOWN, CANCELLED)
     reasons = []
@@ -862,7 +886,11 @@ def verified_status(task_id: str, marker: str = "") -> dict:
         reasons.append("error_not_empty")
     if not isinstance(result, dict) or result.get("exit_code") != 0:
         reasons.append("exit_code_not_zero")
-    if expected and expected not in str((result or {}).get("stdout") or ""):
+    # A task with no usable expected marker is NEVER verified, even when every
+    # other field looks successful. This closes the "no marker => pass" hole.
+    if not valid_marker(expected):
+        reasons.append("expected_marker_missing_or_blank")
+    elif marker_missing(expected, (result or {}).get("stdout")):
         reasons.append("marker_missing:" + expected)
     hist = []
     for e in events(tid, limit=100):
@@ -1435,16 +1463,17 @@ def _finish(task_id: str, generation: int, rc: int | None, cap: dict,
                       (CANCELLED, now, now, task_id, RUNNING, generation))
             _event_tx(c, task_id, "cancelled_checkpoint", {"exit_code": rc})
             return
-        # 2026-11-27 round4: normal exit alone is not success. When the caller supplied
-        # an expected marker, the real child output must contain it before SUCCEEDED.
+        # 2026-11-27 privacy/task closure: normal exit alone is never success.
+        # Every task now carries an expected marker, and the real child output must
+        # contain it before SUCCEEDED.
         expected_marker = ""
         try:
             _payload = json.loads(t["payload_json"] or "{}")
             expected_marker = str(_payload.get("_expected_marker") or "").strip()
         except Exception:
             pass
-        marker_error = ("result_marker_missing:" + expected_marker
-                        if rc == 0 and expected_marker and expected_marker not in cap["stdout"] else "")
+        marker_error = ("result_marker_missing:" + (expected_marker or "<blank>")
+                        if rc == 0 and marker_missing(expected_marker, cap["stdout"]) else "")
         if rc == 0 and not marker_error:
             result = {"stdout": cap["stdout"][-RESULT_STDOUT_TAIL:],
                       "stderr": cap["stderr"][-RESULT_STDERR_TAIL:], "exit_code": rc, **meta}
@@ -1567,13 +1596,22 @@ def handle_request(method: str, path: str, body: dict | None = None) -> tuple[in
     body = body or {}
     try:
         if method == "POST" and p == "/tasks/submit":
-            key = str(body.get("idempotency_key") or "")
+            key = str(body.get("idempotency_key") or "").strip()
             if not key:
                 return 400, {"error": "idempotency_key required"}
-            r = submit(key, str(body.get("kind") or "hermes_cli"), body.get("payload") or {},
+            sid = str(body.get("step_id") or "").strip()
+            if not sid:
+                return 400, {"error": "step_id required"}
+            payload = body.get("payload") or {}
+            if not isinstance(payload, dict):
+                return 400, {"error": "payload must be an object"}
+            marker = str(payload.get("_expected_marker") or "").strip()
+            if not valid_marker(marker):
+                return 400, {"error": "expected_marker required: blank or missing marker cannot be verified"}
+            r = submit(key, str(body.get("kind") or "hermes_cli"), payload,
                        str(body.get("device_id") or ""), int(body.get("priority") or 0),
                        body.get("max_attempts"), str(body.get("retry_policy") or "unknown"),
-                       str(body.get("step_id") or ""))
+                       sid)
             return 202, r
         if method == "POST" and p == "/tasks/cancel":
             return 200, cancel(str(body.get("id") or ""))
@@ -1587,8 +1625,10 @@ def handle_request(method: str, path: str, body: dict | None = None) -> tuple[in
             t = status(str((q.get("id") or [""])[0]))
             return (200, {"task": t}) if t else (404, {"error": "unknown task"})
         if method == "GET" and p == "/tasks/verify":
-            v = verified_status(str((q.get("id") or [""])[0]),
-                                str((q.get("marker") or [""])[0]))
+            # Absent query marker means "use the marker stored with the task".
+            # A present-but-blank marker is explicit and must fail verification.
+            marker = str((q.get("marker") or [""])[0]) if "marker" in q else None
+            v = verified_status(str((q.get("id") or [""])[0]), marker)
             return 200, {"verification": v}
         if method == "GET" and p == "/tasks/find-step":
             t = find_step(str((q.get("step_id") or [""])[0]))

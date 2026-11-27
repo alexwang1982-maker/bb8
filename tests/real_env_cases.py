@@ -128,7 +128,8 @@ def run_c1():
 
 
 def run_c2():
-    marker = "BLUE-LANTERN-77"
+    # Generated per run: no fixed test password is stored in the repository.
+    marker = "BB8-C2-" + hashlib.sha256(str(time.time()).encode("utf-8")).hexdigest()[:10].upper()
     a = chat([{"role": "system", "content": PERSONA},
               {"role": "user", "content": "[PRIVATE MEMORY REDACTED]" + marker + "。记住后只回四个字：记住了。"}],
              tools=None)

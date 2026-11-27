@@ -256,7 +256,7 @@ SUBMIT_TASK_TOOL = {
         "description": (
             "提交一个真实的非物理技能步骤给 Task Engine 执行。"
             "只允许下面白名单里的安全技能；禁止电机、固件、安全锁。"
-            "多步骤时必须给 step_id，并在 depends_on 里写上一步的任务ID或步骤ID；"
+            "每次提交都必须给 step_id 和 expected_marker；依赖任务还必须给 depends_on。"
             "系统会等待依赖真实完成并校验结果后才提交本步。已成功步骤会被跳过。"
             "提交后系统返回真实任务 ID 和状态，不是你的主观判断。"
         ),
@@ -270,7 +270,7 @@ SUBMIT_TASK_TOOL = {
                 "depends_on": {"type": "string", "description": "依赖的任务ID或步骤ID；依赖未真实终态并校验通过前不会提交本步"},
                 "expected_marker": {"type": "string", "description": "结果中必须出现的标记，用于真实结果校验"},
             },
-            "required": ["query"],
+            "required": ["query", "step_id", "expected_marker"],
         },
     },
 }
@@ -343,7 +343,7 @@ BPLUS_RULES = (
     "不许只在文字里说『提交了/完成了』。可用安全技能只有 document-to-action-items"
     "（默认写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian；"
     "不要提交 note-taking/memory/web/research 这类目录名，它们不是可执行技能。"
-    "多步骤任务必须用 step_id 标识每一步，用 depends_on 写上一步的任务ID或步骤ID；"
+    "每次提交都必须给 step_id 和 expected_marker；依赖任务还必须给 depends_on（上一步的任务ID或步骤ID）。"
     "系统会等待依赖进入真实终态并校验通过后才提交下一步。已验证成功的步骤不会重复执行。"
     "技能是否可用一律由 submit_task 工具判定：即使你认为技能不存在，也必须先调用工具，不许只凭记忆回答。"
     "查询任务必须调用 check_task，不许凭记忆说查不到。"
@@ -1136,7 +1136,7 @@ def memory_write_request(text):
         after = after.strip(tail_noise)
         if len(after) >= 2:
             return after
-        # 触发词在句尾（"…PRIVATE-FACT-REDACTED"）：取前半句，别写成"了"
+        # 触发词在句尾（称呼类句子）：取前半句，别写成"了"
         before = before.strip(tail_noise)
         noise_prefix = ("你再跟我说一遍", "我再跟你说一遍", "你再跟我说", "你再给我说一遍",
                         "跟你说一遍", "再说一遍", "说一遍", "你再", "我再",
@@ -1346,7 +1346,7 @@ def is_asr_garbage(text):
         "连接", "电脑", "助手", "看到", "看见", "听到", "摄像", "拍照", "切换",
         "天气", "音量", "声音", "播放", "放歌", "音乐", "记住", "我叫",
         "时间", "几点", "日期", "转头", "前进", "后退", "停止", "停",
-        "坚哥", "王坚", "小智", "你好", "测试", "桌面", "文件", "还在", "在线",
+        "小智", "你好", "测试", "桌面", "文件", "还在", "在线",
         "检查", "看看", "识别", "什么", "怎么", "为什么", "是不是", "帮我", "我的",
         "不是", "就是", "我说的", "我说", "你说的", "不是的",
         # 2026-11-27：真实任务句子常夹英文技能名/标记，旧白名单误杀成"没听清"。
@@ -2026,6 +2026,11 @@ class Handler(BaseHTTPRequestHandler):
                                        (requested_skill, list(SAFE_TASK_SKILLS_ALL)))
                     elif not query:
                         tool_result = "blocked: query 为空，未提交任务"
+                    elif not step_id:
+                        tool_result = "blocked: step_id 缺失或空白，未提交任务"
+                    elif not marker:
+                        tool_result = ("blocked: expected_marker 缺失或空白，未提交任务；"
+                                       "没有结果标记的任务永远不能判定成功")
                     else:
                         # 已验证成功的步骤绝不重复执行（复用 tasks 表，不建 ledger）。
                         done = task_engine.find_step_success(step_id, marker) if step_id else None
@@ -2094,7 +2099,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "duplicate": bool(r.get("duplicate")),
                                         "task_id": tid_sub, "status": st_sub.get("status"),
                                         "step_id": step_id, "depends_on": depends_on,
-                                        "dependency_verified": bool(dep_v),
+                                        "dependency_verified": bool((dep_v or {}).get("verified")),
                                         "expected_marker": marker,
                                         "requested_skill": requested_skill,
                                         "actual_hermes_skill": skill,
