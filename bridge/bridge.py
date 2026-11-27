@@ -255,14 +255,14 @@ SUBMIT_TASK_TOOL = {
         "name": SUBMIT_TASK_NAME,
         "description": (
             "提交一个真实的非物理技能步骤给 Task Engine 执行。"
-            "只允许 note-taking/memory/web/research 这类安全技能；禁止电机、固件、安全锁。"
+            "只允许下面白名单里的安全技能；禁止电机、固件、安全锁。"
             "提交后系统返回真实任务 ID 和状态，不是你的主观判断。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "这一步要让技能真实完成的具体任务"},
-                "skill": {"type": "string", "description": "安全技能名，如 note-taking"},
+                "skill": {"type": "string", "description": "安全技能名：document-to-action-items（默认，写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian。旧名 note-taking 会自动映射到 document-to-action-items。"},
                 "idempotency_key": {"type": "string", "description": "幂等键；重复提交同一键不会重复执行"},
             },
             "required": ["query"],
@@ -282,7 +282,31 @@ CHECK_TASK_TOOL = {
         },
     },
 }
-SAFE_TASK_SKILLS = ("note-taking", "memory", "web", "research", "productivity")
+# 2026-11-27 第3轮：必须是 Hermes 真实安装且实测可运行的技能名。
+# 旧代码把目录名 note-taking/memory/web/research/productivity 当技能，
+# hermes 实际报 "Unknown skill(s)"（run2/run3 原始证据）。
+# note-taking 是旧提示词里的legacy别名，映射到已实测通过的 document-to-action-items。
+SAFE_TASK_SKILL_ALIASES = {
+    "note-taking": "document-to-action-items",
+    "notes": "document-to-action-items",
+    "document": "document-to-action-items",
+    "document-notes": "document-to-action-items",
+}
+SAFE_TASK_SKILLS = (
+    "document-to-action-items", "meeting-action-items",
+    "weekly-review-planning", "obsidian",
+)
+SAFE_TASK_SKILLS_ALL = tuple(SAFE_TASK_SKILLS) + tuple(SAFE_TASK_SKILL_ALIASES)
+
+
+def safe_task_skill(name):
+    """返回 (是否允许, 真正传给 hermes 的技能名)。不在这里猜测或模拟执行。"""
+    s = str(name or "").strip().lower()
+    if s in SAFE_TASK_SKILL_ALIASES:
+        return True, SAFE_TASK_SKILL_ALIASES[s]
+    if s in SAFE_TASK_SKILLS:
+        return True, s
+    return False, s
 
 BPLUS_RULES = (
     "\n\n【BB-8 B+ 工作规则】\n"
@@ -310,8 +334,10 @@ BPLUS_RULES = (
     "「I2C 自检 / 摄像头自检」是 self_camera_i2c（读摄像头识别），不是 self_selftest_motor；"
     "说「扫描接线」用 self_camera_i2c_scan。只有明确说「电机自检」才用 self_selftest_motor。\n"
     "【任务】需要真正做事时用 submit_task 逐步骤提交、用 check_task 查真实结果；"
-    "不许只在文字里说『提交了/完成了』。任务结果以工具返回为准；失败就说失败，"
-    "并经用户同意后再换安全技能重试。\n"
+    "不许只在文字里说『提交了/完成了』。可用安全技能只有 document-to-action-items"
+    "（默认写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian；"
+    "不要提交 note-taking/memory/web/research 这类目录名，它们不是可执行技能。"
+    "任务结果以工具返回为准；失败就说失败，并经用户同意后再换安全技能重试。\n"
 )
 
 
@@ -1314,6 +1340,7 @@ def is_asr_garbage(text):
         "不是", "就是", "我说的", "我说", "你说的", "不是的",
         # 2026-11-27：真实任务句子常夹英文技能名/标记，旧白名单误杀成"没听清"。
         "技能", "任务", "标记", "重试", "提交", "状态", "ID", "bb8-", "note-taking",
+        "document-to-action-items", "obsidian", "meeting-action-items",
     )
     low = t.lower().replace(" ", "")
     if any(w.lower().replace(" ", "") in low for w in WHITELIST):
@@ -1977,10 +2004,12 @@ class Handler(BaseHTTPRequestHandler):
                     args = {}
                 if name == SUBMIT_TASK_NAME:
                     query = str(args.get("query") or "").strip()
-                    skill = str(args.get("skill") or "note-taking").strip() or "note-taking"
-                    if skill not in SAFE_TASK_SKILLS:
+                    requested_skill = str(args.get("skill") or "document-to-action-items").strip() \
+                        or "document-to-action-items"
+                    allowed, skill = safe_task_skill(requested_skill)
+                    if not allowed:
                         tool_result = ("blocked: skill %r 不在非物理技能白名单 %s" %
-                                       (skill, list(SAFE_TASK_SKILLS)))
+                                       (requested_skill, list(SAFE_TASK_SKILLS_ALL)))
                     elif not query:
                         tool_result = "blocked: query 为空，未提交任务"
                     else:
@@ -1999,10 +2028,12 @@ class Handler(BaseHTTPRequestHandler):
                                 "ok": True, "submitted_to_task_engine": True,
                                 "duplicate": bool(r.get("duplicate")),
                                 "task_id": tid_sub, "status": st_sub.get("status"),
+                                "requested_skill": requested_skill,
+                                "actual_hermes_skill": skill,
                                 "note": "已真实提交；用 check_task 查询执行结果，不许自行宣告完成",
                             }, ensure_ascii=False)
-                            print("[bridge] submit_task -> %s skill=%s duplicate=%s" %
-                                  (tid_sub, skill, r.get("duplicate")), flush=True)
+                            print("[bridge] submit_task -> %s skill=%s (requested=%s) duplicate=%s" %
+                                  (tid_sub, skill, requested_skill, r.get("duplicate")), flush=True)
                         except Exception as exc:
                             tool_result = "error: submit failed: %r" % (exc,)
                 else:
