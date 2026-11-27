@@ -1,4 +1,4 @@
-param([string]$RunTag = 'run1', [switch]$NoStart)
+param([string]$RunTag = 'run1', [switch]$NoStart, [switch]$Fresh)
 
 $ErrorActionPreference = 'Stop'
 $repo = 'G:\bb8-real-env-test'
@@ -12,6 +12,14 @@ foreach ($c in $conns) {
     $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
     if ($p -and $p.Path -like '*python*') { Stop-Process -Id $p.Id -Force }
     Start-Sleep -Milliseconds 300
+}
+
+if ($Fresh) {
+    # WAL files must also be removed: SQLite otherwise recovers the previous run's tasks.
+    foreach ($f in @('tasks.db', 'tasks.db-wal', 'tasks.db-shm', 'session_threads.json',
+                     'power_reminder_state.json')) {
+        Remove-Item -LiteralPath (Join-Path $iso $f) -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # Sync source from the branch working tree into the isolated runtime.
@@ -50,6 +58,7 @@ $env:SF_VISION_MODEL = 'Qwen/Qwen3-VL-8B-Instruct'
 $env:OPENMUSE_TASK_DB = Join-Path $iso 'tasks.db'
 $env:OPENMUSE_TASK_MAX_WORKERS = '1'
 $env:OPENMUSE_TASK_HERMES_CMD = 'G:\Hermes\home\bin\hermes.cmd'
+$env:OPENMUSE_TASK_HERMES_MODEL = 'agnes/agnes-3.0-flash'
 $env:OPENMUSE_TASK_RESULT_RECEIVER = 'http://127.0.0.1:8910/tasks/result/receiver'
 $env:OPENMUSE_TASK_OUTBOX_BACKOFF_BASE = '1'
 $env:OPENMUSE_TASK_TIMEOUT = '45'
@@ -57,7 +66,7 @@ $env:BB8_INJECT_OPENMUSE_MEMORY = '1'
 $env:OPENMUSE_BRIDGE_CHAT_TIMEOUT = '35'
 $env:POWER_REMINDER_TURNS = '10000'
 $env:BB8_DUMP_DIR = $evidence
-$env:BB8_TASK_SAFE_MODE = '1'
+$env:BB8_TASK_RESTRICTED = '1'
 
 if ($NoStart) { Write-Output 'stopped-only'; return }
 

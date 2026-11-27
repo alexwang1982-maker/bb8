@@ -1194,10 +1194,15 @@ def _build_cmd(task: dict) -> list[str]:
         cmd += ["-t", str(payload["toolsets"])]
     if payload.get("skills"):
         cmd += ["-s", str(payload["skills"])]
-    # 2026-11-27 真实环境连续任务测试：显式安全模式，禁止危险命令审批绕过，
-    # 并限制工具迭代次数。物理动作/刷机/解锁不在测试范围内。
-    if os.environ.get("BB8_TASK_SAFE_MODE", "0") == "1":
-        cmd += ["--safe-mode", "--max-turns", "8"]
+    # 2026-11-27 连续任务测试第2轮修正：
+    # 不能加 hermes --safe-mode —— 实测它会把 provider 强制成未配置的 auto，
+    # 导致所有真实技能任务在请求发出前就失败（见 run2 证据）。
+    # 改为：限定安全技能白名单（bridge 侧）+ 限制工具迭代 + 显式真实 provider。
+    if os.environ.get("BB8_TASK_RESTRICTED", "0") == "1":
+        cmd += ["--max-turns", "8"]
+    _model = os.environ.get("OPENMUSE_TASK_HERMES_MODEL", "").strip()
+    if _model:
+        cmd += ["-m", _model]
     return cmd
 def _drain_pipe(pipe, key: str, store: dict, totals: dict, lock: threading.Lock) -> None:
     """Read a child pipe forever, keeping only the tail up to OUTPUT_LIMIT bytes."""
