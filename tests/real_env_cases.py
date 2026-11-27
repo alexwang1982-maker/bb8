@@ -183,13 +183,13 @@ def run_c3():
     dump("c3-task-list.raw.json", lst)
     tasks = ((lst.get("json") or {}).get("tasks") or []) if lst.get("json") else []
     real = [t for t in tasks if "BB8-ORCHESTRATOR-ALPHA" in json.dumps(t, ensure_ascii=False)]
-    terminal = [t for t in real if t.get("status") in ("succeeded", "failed", "unknown")]
+    terminal = [t for t in real if t.get("status") == "succeeded"]
     ok = bool(real) and bool(terminal)
     return {"case": "C3-decomposition", "pass": bool(ok),
             "external_evidence": ["c3-decomposition.raw.json", "c3-task-list.raw.json",
                                   "agnes-request-*.json"],
             "observed": {"tools": tool_names(r), "task_count": len(tasks),
-                         "marker_task_count": len(real), "terminal_task_count": len(terminal),
+                         "marker_task_count": len(real), "succeeded_task_count": len(terminal),
                          "reply": content_of(r)[:200]}}
 
 
@@ -216,7 +216,7 @@ def run_c4():
         e = task_api("/tasks/events?id=" + t["id"] + "&limit=50")
         ev[t["id"]] = e.get("raw", "")
     dump("c4-task-events.raw.json", ev)
-    terminal = [t for t in one + two if t.get("status") in ("succeeded", "failed", "unknown")]
+    terminal = [t for t in one + two if t.get("status") == "succeeded"]
     ok = len(one) >= 1 and len(two) >= 1 and len(terminal) >= 2
     return {"case": "C4-skill-sequence", "pass": bool(ok),
             "external_evidence": ["c4-skill-sequence.raw.json", "c4-task-list.raw.json",
@@ -258,7 +258,7 @@ def run_c6():
     bad = task_api("/tasks/submit", {
         "idempotency_key": key, "kind": "hermes_cli",
         "payload": {"query": "读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK",
-                    "skill": "bb8-nonexistent-skill-zz", "run_budget": 20},
+                    "skills": "bb8-nonexistent-skill-zz", "run_budget": 20},
         "device_id": USER, "retry_policy": "never", "max_attempts": 1})
     dump("c6-failure-submit.raw.json", bad)
     tid = ((bad.get("json") or {}).get("task") or {}).get("id", "")

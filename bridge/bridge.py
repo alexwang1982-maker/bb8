@@ -1885,6 +1885,25 @@ class Handler(BaseHTTPRequestHandler):
                 on_text=None,
             )
             calls = [c for c in (sanitize_tool_call(tc) for tc in result["tool_calls"]) if c]
+            # 2026-11-27 第2轮：AGNES 有时把 tool_call 写成 content 里的严格 JSON。
+            # 只提升我们自己的两个非物理元工具；不复活旧的关键词猜测，不提升设备动作。
+            if not calls:
+                _txt = str(result.get("content") or "").strip()
+                if _txt.startswith("{") and _txt.endswith("}"):
+                    try:
+                        _obj = json.loads(_txt)
+                    except Exception:
+                        _obj = None
+                    if (isinstance(_obj, dict) and _obj.get("type") == "tool_call"
+                            and _obj.get("name") in (SUBMIT_TASK_NAME, CHECK_TASK_NAME)):
+                        _fn = str(_obj["name"])
+                        _args = _obj.get("args") if isinstance(_obj.get("args"), dict) else {}
+                        calls = [{"id": str(_obj.get("id") or ("call_text_" + uuid.uuid4().hex[:12])),
+                                  "type": "function",
+                                  "function": {"name": _fn,
+                                               "arguments": json.dumps(_args, ensure_ascii=False)}}]
+                        result["content"] = ""
+                        print("[bridge] text tool_call promoted -> %s" % _fn, flush=True)
             if vision_context:
                 meta_tools = {ASK_BRAIN_NAME, FORWARD_TO_PC_NAME,
                               SUBMIT_TASK_NAME, CHECK_TASK_NAME}
