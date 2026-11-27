@@ -1,0 +1,20 @@
+﻿=== ATTEMPT 1 2026-11-27T15:43:02.0607214+08:00 ===
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
+EXIT=128
+=== ATTEMPT 2 2026-11-27T15:44:00.5715572+08:00 ===
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
+EXIT=128
+=== ATTEMPT 3 2026-11-27T15:44:53.7181648+08:00 ===
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
+EXIT=128
+=== ATTEMPT 4 2026-11-27T15:45:23.9821670+08:00 ===
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
+EXIT=128
+=== ATTEMPT 5 2026-11-27T15:46:53.4505019+08:00 ===
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
+EXIT=128
