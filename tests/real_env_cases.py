@@ -169,7 +169,7 @@ def wait_task(tid, seconds=150):
 
 def run_c3():
     q = ("请分两步完成一个多步骤目标，每步都用 submit_task 真正提交到任务引擎，"
-         "不要只在文字里说做了：第一步用 note-taking 技能写笔记，内容含标记 BB8-ORCHESTRATOR-ALPHA；"
+         "不要只在文字里说做了：第一步用 document-to-action-items 技能写笔记，内容含标记 BB8-ORCHESTRATOR-ALPHA；"
          "第二步用 check_task 查询第一个任务的真实状态。最后只报告任务ID和真实状态。")
     r = chat([{"role": "system", "content": PERSONA}, {"role": "user", "content": q}], TOOLS)
     dump("c3-decomposition.raw.json", r)
@@ -194,8 +194,8 @@ def run_c3():
 
 
 def run_c4():
-    q = ("依次提交两个安全技能任务：先用 note-taking 技能写 BB8-SKILL-ONE，"
-         "等它完成后再用 note-taking 技能写 BB8-SKILL-TWO。必须顺序执行，不能只说做了。")
+    q = ("依次提交两个安全技能任务：先用 document-to-action-items 技能写 BB8-SKILL-ONE，"
+         "等它完成后再用 document-to-action-items 技能写 BB8-SKILL-TWO。必须顺序执行，不能只说做了。")
     r = chat([{"role": "system", "content": PERSONA}, {"role": "user", "content": q}], TOOLS)
     dump("c4-skill-sequence.raw.json", r)
     for _ in range(90):
@@ -272,7 +272,7 @@ def run_c6():
     dump("c6-feedback-adjust.raw.json", follow)
     fix = chat([{"role": "system", "content": PERSONA},
                 {"role": "assistant", "content": content_of(follow)},
-                {"role": "user", "content": "好，换 note-taking 技能重试，写标记 BB8-ADJUSTED-OK。"}], TOOLS)
+                {"role": "user", "content": "好，换 document-to-action-items 技能重试，写标记 BB8-ADJUSTED-OK。"}], TOOLS)
     dump("c6-adjusted-retry.raw.json", fix)
     lst = task_api("/tasks/list?limit=20")
     dump("c6-task-list.raw.json", lst)
@@ -298,19 +298,23 @@ def run_c7():
     key = "bb8-idem-" + str(int(time.time()))
     body = {"idempotency_key": key, "kind": "hermes_cli",
             "payload": {"query": "只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具",
-                        "skill": "note-taking", "run_budget": 20},
+                        "skills": "document-to-action-items", "run_budget": 20},
             "device_id": USER, "retry_policy": "never", "max_attempts": 1}
     a = task_api("/tasks/submit", body)
     b = task_api("/tasks/submit", body)
     dump("c7-idempotency.raw.json", {"first": a, "second": b})
     tid = ((a.get("json") or {}).get("task") or {}).get("id", "")
-    st = wait_task(tid, 100) if tid else None
+    st = wait_task(tid, 180) if tid else None
     dump("c7-final-status.raw.json", st or {})
     q = "任务 " + tid + " 现在到底完成了吗？只按真实任务状态回答，不要猜。"
     ask = chat([{"role": "system", "content": PERSONA}, {"role": "user", "content": q}], TOOLS)
     dump("c7-completion-claim.raw.json", ask)
+    # 第3轮修正：队列排在长任务后面时，等待快照可能仍是 queued。
+    # 判定前再取一次 SQLite 真源；两个快照都保留为原始证据。
+    st_final = task_api("/tasks/status?id=" + tid) if tid else None
+    dump("c7-judgement-status.raw.json", st_final or {})
     dup = bool((b.get("json") or {}).get("duplicate"))
-    status = ((st or {}).get("json") or {}).get("task", {}).get("status", "")
+    status = ((st_final or st or {}).get("json") or {}).get("task", {}).get("status", "")
     reply = content_of(ask)
     if status == "succeeded":
         consistent = any(w in reply for w in ("完成", "成功", "done", "OK", "ok"))
@@ -319,7 +323,8 @@ def run_c7():
     ok = dup and status in ("succeeded", "failed", "unknown") and bool(reply) and consistent
     return {"case": "C7-idempotency-completion", "pass": bool(ok),
             "external_evidence": ["c7-idempotency.raw.json", "c7-final-status.raw.json",
-                                  "c7-completion-claim.raw.json", "agnes-request-*.json"],
+                                  "c7-judgement-status.raw.json", "c7-completion-claim.raw.json",
+                                  "agnes-request-*.json"],
             "observed": {"duplicate_flag": dup, "real_status": status,
                          "consistent": consistent, "reply": reply[:200]}}
 
