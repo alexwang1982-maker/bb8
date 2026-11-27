@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+tmp/
+data/*.db
+data/*.lock
+data/.config.yaml
+data/*.bak*
+server_token
+*.token
+*.log
+.DS_Store

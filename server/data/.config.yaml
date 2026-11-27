@@ -1,0 +1,95 @@
+# ===== 顶层配置（代码从 conn.config 顶层读取，不是 server 段！）=====
+# 人设：原来的默认 prompt 是"台湾省00后女生/机车腔/笑死/真的假的啦"，
+# 实测就是它话痨、装傻、乱解释的根源（16:40:38 日志确认仍在用）。改为简短直接。
+prompt: |
+  你是"小志"，王坚（称呼"坚哥"）的 BB-8 桌面机器人。
+  说话简短、直接、口语化，一般一到两句话说完，不铺垫、不反问、不长篇解释。
+  【硬规则】
+  - 被问"你是谁/叫什么"：回答"我是小志，坚哥的 BB-8"。
+  - 用户说"开灯/关灯/亮起来/灭了/眼睛灯"：一律指眼睛灯，直接调用 self_eye_set 工具，不要解释、不要反问是哪个灯。
+  - 用户说"调音量/声音调大/调小/调到百分之X"：直接调用 self_audio_speaker_set_volume 工具设置音量（先按需调 self_get_device_status 查当前值）。这是你能做到的事，绝对不要说"音量不归我管/我管不着/音量不在硬件里"这类话。
+  - 绝对不要主动播放音乐或唱歌；只有用户明确说"放首歌/来一首/播放…"时才允许。
+  - 做不到的事一句话说清，不要长篇解释自己有什么没什么、为什么做不到。
+  - 不用"笑死""真的假的啦"这类口头禅，不要卖萌讨夸奖。
+  - 【绝对禁止】不要说"我转给电脑助手处理""我转达给opencode"这类话——那是系统自动做的，你说了就是骗人。用户说"启动助手模式/问下opencode+任务"时，你只需简短回"好的"，转发由系统自动完成，你不要宣称自己在转发。
+
+# 连续监听窗口：说完话多久没声音就断开回待机（需要唤醒词）。
+# 60 秒仍嫌频繁：设备固件在断开后会自动重连（4秒内），断开只剩嘟嘟声扰人。
+# 2026-11-21 拉到 300 秒（5 分钟），大幅降低待机重连/提示音频率。回滚改回 60。
+close_connection_no_voice_time: 300
+# 超时不要念"时间过得真快…"告别语，直接静默断开。
+end_prompt:
+  enable: false
+# 声纹识别：指向本地 voiceprint_server.py（sherpa-onnx 3dspeaker）
+voiceprint:
+  url: "http://127.0.0.1:8010/voiceprint/identify?key=vp-local-key"
+  speakers:
+    - "wangjian,王坚,主人"
+  similarity_threshold: 0.35
+  # 声纹过滤：忽略"未知说话人"（环境音/别人说话），只响应已注册的主人
+  # 2026-11-21 改为 false：用户要求别人也能对话（代价：环境音会接话）
+  ignore_unknown: false
+  # 声纹打断：已关闭（2026-11-21）。单麦无 AEC 参考通道，开麦必然自听，
+  # 实测"命中后 ASR 把自己的诗当用户指令"，得不偿失。回滚用唤醒词/按头打断。
+  # 要重新开启需同时把固件 Speaking 的 EnableVoiceProcessing 改回 true 并重烧。
+  barge_in: false
+
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  # 用"你的"让服务自动填本机当前IP（192.168.1.7）。不要写死IP——写死会随网络变化失效。
+  websocket: ws://192.168.1.7:8000/xiaozhi/v1/
+  vision_explain: http://192.168.1.7:8003/mcp/vision/explain
+  auth:
+    enabled: false
+manager-api:
+  url: ""
+selected_module:
+  VAD: SileroVAD
+  ASR: SherpaParaformerASR
+  LLM: openai
+  VLLM: ChatGLMVLLM
+  TTS: EdgeTTS
+  # 记忆真源 = OpenMuse（读 /api/memory，过滤 digest，走 xiaozhi 原生 <memory> 注入）
+  # 回滚：把这里改回 nomem
+  Memory: openmuse
+  Intent: function_call
+# 2026-11-21 17:40 回滚：fanchen 音质不合格（用户："声音太难听"），切回 EdgeTTS。
+# 音色不变（XiaoxiaoNeural），只把语速提到 +15%，听感更快但不换嗓子。
+TTS:
+  EdgeTTS:
+    type: edge
+    voice: zh-CN-XiaoxiaoNeural
+    rate: 15
+    volume: 50
+    pitch: 0
+    output_dir: tmp/
+Memory:
+  openmuse:
+    type: openmuse
+    max_items: 30
+    exclude_categories:
+      - digest
+LLM:
+  openai:
+    model_name: openmuse
+    base_url: http://127.0.0.1:8900/v1
+    api_key: local-bridge
+    timeout: 240
+ASR:
+  SherpaParaformerASR:
+    type: sherpa_onnx_local
+    model_dir: "G:/openmuse/models/sherpa-onnx-paraformer-zh-int8-2025-10-07"
+    model_type: paraformer
+    output_dir: tmp/
+VAD:
+  SileroVAD:
+    type: silero
+    # 调高阈值：环境噪声更难触发（0.5 -> 0.65 -> 0.78）
+    # 目的：堵住"旁边说话被当成指令"（2026-11-21 日志实证误触发）
+    threshold: 0.78
+    threshold_low: 0.45
+    model_dir: models/snakers4_silero-vad
+    # 需要更长的静音才判定"说完了"（200ms -> 600ms -> 800ms），减少被噪声切碎
+    min_silence_duration_ms: 800
