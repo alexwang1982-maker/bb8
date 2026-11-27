@@ -1,12 +1,16 @@
 ﻿python.exe : G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmp
 eg or avconv - defaulting to ffmpeg, but may not work
-所在位置 行:3 字符: 1
-+ & $py -B -m unittest tests.test_bb8_voice_safety_r1 -v 2>&1 | Out-Fil ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+所在位置 行:1 字符: 1
++ & 'G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe' -B -m unitte ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (G:\openmuse\xia...ut may not work:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
   warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+test_abort_without_new_round_still_clears (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_abort_without_ne
+w_round_still_clears) ... ok
+test_stale_abort_does_not_clear_new_playback (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_stale_abort_d
+oes_not_clear_new_playback) ... ok
 test_mqtt_aec_false_does_not_apply_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_false_does_no
 t_apply_aec) ... ok
 test_mqtt_aec_true_with_valid_timestamp_applies_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_
@@ -25,20 +29,26 @@ test_reset_drains_queues_and_invalidates_old_frames (tests.test_bb8_voice_safety
 ns_queues_and_invalidates_old_frames) ... ok
 test_stale_frames_are_not_dispatched (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_stale_frames_are_not_disp
 atched) ... ok
+test_concurrent_gate_changes_keep_generation_consistent (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_concurre
+nt_gate_changes_keep_generation_consistent) ... ok
+test_rotate_holds_lock_for_whole_state_change (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_rotate_holds_lock_
+for_whole_state_change) ... ok
+test_listen_stop_passes_source_generation_before_reset (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
+e.test_listen_stop_passes_source_generation_before_reset) ... ok
+test_new_round_during_asr_drops_brain_dispatch (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_n
+ew_round_during_asr_drops_brain_dispatch) ... ok
+test_none_generation_is_not_authorization (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_none_g
+eneration_is_not_authorization) ... ok
+test_old_voiceprint_enrollment_dropped_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
+e.test_old_voiceprint_enrollment_dropped_after_new_round) ... ok
 test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_
 stale_sentence_stop_does_not_clear_current_playback) ... ok
 test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clear
 s_speaking_even_when_send_fails) ... ok
 test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.t
 est_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
-test_three_capabilities_stay_separate (tests.test_bb8_voice_safety_r1.TestVisionRouting.test_three_capabilities_stay_se
-parate) ... ok
-[22:59:40] [bridge] vision_look skip: tool/vision continuation
-[22:59:40] [bridge] vision_look dedup skip
-test_vision_continuation_and_dedup (tests.test_bb8_voice_safety_r1.TestVisionRouting.test_vision_continuation_and_dedup
-) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 0.501s
+Ran 20 tests in 0.708s
 
 OK

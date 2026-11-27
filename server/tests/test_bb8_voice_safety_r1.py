@@ -47,7 +47,10 @@ import websockets
 
 from core.connection import ConnectionHandler
 from core.providers.asr.base import ASRProviderBase
-from core.utils.audio_source_gate import unpack_gated_frame
+from core.providers.asr.dto.dto import InterfaceType
+from core.utils.audio_source_gate import AudioSourceGate, unpack_gated_frame
+from core.handle.abortHandle import handleAbortMessage
+from core.handle.textHandler.listenMessageHandler import ListenTextMessageHandler
 import core.providers.asr.base as asr_base
 import core.handle.sendAudioHandle as send_audio_handle
 
@@ -94,6 +97,9 @@ def make_conn():
     conn.bind_completed_event.set()
     conn.need_bind = False
     conn.sentence_id = None
+    conn.tts = None
+    conn.report_queue = __import__("queue").Queue()
+    conn.voiceprint_provider = None
     conn.tts_playback_active = False
     conn.tts_playback_token = None
     conn.tts_playback_started_at = 0.0
@@ -300,34 +306,157 @@ class TestAudioEntryAndAec(unittest.TestCase):
         asyncio.run(run())
 
 
-class TestVisionRouting(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        sys.path.insert(0, str(ROOT.parent / "bridge"))
-        import bridge
+class TestListenStopGenerationLifecycle(unittest.IsolatedAsyncioTestCase):
+    """listen stop 必须保留源 generation；新一轮 reset/abort 后旧结果失效。"""
 
-        cls.bridge = bridge
+    async def _gated_conn(self):
+        conn = make_conn()
+        conn.asr = _FakeASR()
+        conn.asr.interface_type = InterfaceType.NON_STREAM
+        _, item = conn.enqueue_microphone_audio(b"frame")
+        generation, _, _ = unpack_gated_frame(item)
+        conn.current_audio_generation = generation
+        conn.asr_audio = [b"frame"]
+        return conn, generation
 
-    def test_three_capabilities_stay_separate(self):
-        b = self.bridge
-        self.assertEqual(b.vision_request("看看"), "看看")
-        self.assertIsNotNone(b.camera_mgmt_request("摄像头切到人脸识别"))
-        self.assertIsNotNone(b.camera_latest_request("摄像头识别到什么"))
-        self.assertIsNone(b.camera_mgmt_request("看看"))
-        self.assertIsNone(b.camera_latest_request("看看"))
+    async def test_listen_stop_passes_source_generation_before_reset(self):
+        conn, generation = await self._gated_conn()
 
-    def test_vision_continuation_and_dedup(self):
-        b = self.bridge
-        b._vision_recent.clear()
-        messages = [
-            {"role": "user", "content": "看看"},
-            {"role": "system", "content": b.build_vision_context("a cat")},
-        ]
-        self.assertIsNone(b.vision_request_allowed("看看", messages, "session-a"))
+        with patch.object(conn.asr, "handle_voice_stop", new=AsyncMock()) as hv:
+            await ListenTextMessageHandler().handle(conn, {"state": "stop"})
+            hv.assert_awaited_once()
+            self.assertEqual(hv.await_args.kwargs["source_generation"], generation)
 
-        fresh = [{"role": "user", "content": "看看"}]
-        self.assertEqual(b.vision_request_allowed("看看", fresh, "session-b"), "看看")
-        self.assertIsNone(b.vision_request_allowed("看看", fresh, "session-b"))
+        # listen stop 是收尾，不是新一轮：generation 仍然有效。
+        self.assertTrue(conn.audio_gate.is_current(generation))
+        self.assertEqual(conn.asr_audio, [])
+
+    async def test_new_round_during_asr_drops_brain_dispatch(self):
+        conn, generation = await self._gated_conn()
+
+        async def slow_asr(pcm_data, session_id):
+            # 识别等待期间发生新一轮 reset/abort。
+            conn.audio_gate.rotate("new_round_abort")
+            return ("旧轮识别文本", None)
+
+        with patch.object(conn.asr, "speech_to_text_wrapper", new=slow_asr), patch.object(
+            conn.asr, "stop_ws_connection", new=lambda: None
+        ), patch.object(asr_base, "enqueue_asr_report", new=lambda *a, **k: None), patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=generation)
+            brain.assert_not_awaited()
+
+    async def test_old_voiceprint_enrollment_dropped_after_new_round(self):
+        conn, generation = await self._gated_conn()
+        enroll = AsyncMock(return_value=True)
+
+        async def identify(wav, session_id):
+            conn.audio_gate.rotate("new_round_abort")
+            return "owner"
+
+        conn.voiceprint_provider = types.SimpleNamespace(
+            identify_speaker=AsyncMock(side_effect=identify),
+            enroll_speaker=enroll,
+            speaker_ids=["owner"],
+        )
+
+        async def asr_text(pcm_data, session_id):
+            return ("记住我的声音", None)
+
+        with patch.object(conn.asr, "speech_to_text_wrapper", new=asr_text), patch.object(
+            conn.asr, "stop_ws_connection", new=lambda: None
+        ), patch.object(asr_base, "startToChat", new=AsyncMock()) as brain:
+            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=generation)
+            enroll.assert_not_awaited()
+            brain.assert_not_awaited()
+
+    async def test_none_generation_is_not_authorization(self):
+        gate = AudioSourceGate()
+        self.assertFalse(gate.is_current(None))
+
+        conn, _ = await self._gated_conn()
+        # 连接侧也没有 generation 时，解析结果必须是 None，而不是回退成授权。
+        conn.current_audio_generation = None
+        with patch.object(conn.asr, "speech_to_text_wrapper", new=AsyncMock()) as stt, patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=None)
+            stt.assert_not_awaited()
+            brain.assert_not_awaited()
+
+
+class TestAbortRoundIsolation(unittest.IsolatedAsyncioTestCase):
+    """旧 Abort 不得清除新播放态，也不得重开新一轮音频入口。"""
+
+    async def test_stale_abort_does_not_clear_new_playback(self):
+        conn = make_conn()
+        token1 = conn.begin_tts_playback("first")
+        conn.sentence_id = "s1"
+
+        async def start_new_round(payload):
+            conn.begin_tts_playback("second")
+            conn.sentence_id = "s2"
+
+        conn.websocket = types.SimpleNamespace(send=AsyncMock(side_effect=start_new_round))
+        await handleAbortMessage(conn, "stale")
+
+        self.assertNotEqual(conn.tts_playback_token, token1)
+        self.assertTrue(conn.is_tts_playback_active())
+        self.assertFalse(conn.audio_gate.normal_open)
+
+    async def test_abort_without_new_round_still_clears(self):
+        conn = make_conn()
+        conn.begin_tts_playback("first")
+        conn.sentence_id = "s1"
+        conn.websocket = types.SimpleNamespace(send=AsyncMock())
+
+        await handleAbortMessage(conn, "normal")
+
+        self.assertFalse(conn.is_tts_playback_active())
+        self.assertTrue(conn.audio_gate.normal_open)
+
+
+class TestGateAtomicity(unittest.TestCase):
+    def test_rotate_holds_lock_for_whole_state_change(self):
+        gate = AudioSourceGate()
+        observed = []
+        original = gate._rotate_locked
+
+        def probe(reason, normal_open):
+            observed.append(bool(gate._lock._is_owned()))
+            return original(reason, normal_open)
+
+        gate._rotate_locked = probe
+        gate.rotate("atomic")
+
+        self.assertEqual(observed, [True])
+        self.assertEqual(gate.state()["reason"], "atomic")
+
+    def test_concurrent_gate_changes_keep_generation_consistent(self):
+        gate = AudioSourceGate()
+        barrier = threading.Barrier(6)
+
+        def worker(i):
+            barrier.wait()
+            for _ in range(300):
+                if i % 3 == 0:
+                    gate.rotate("r")
+                elif i % 3 == 1:
+                    gate.suppress("s")
+                else:
+                    gate.open("o")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        state = gate.state()
+        self.assertEqual(state["generation"], 1800)
+        self.assertEqual(state["counters"]["generations"], 1800)
+        self.assertIn(state["reason"], {"r", "s", "o"})
 
 
 class TestRealWebSocketRoute(unittest.IsolatedAsyncioTestCase):

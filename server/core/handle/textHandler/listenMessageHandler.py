@@ -51,11 +51,16 @@ class ListenTextMessageHandler(TextMessageHandler):
             else:
                 # 非流式模式：直接触发ASR识别
                 if len(conn.asr_audio) > 0:
+                    # 先保存本轮音频的源 generation，再做收尾清状态。
+                    # 收尾不能 rotate，否则刚复制出来的音频会被误判成旧轮。
+                    source_generation = conn.current_audio_generation
                     asr_audio_task = conn.asr_audio.copy()
-                    conn.reset_audio_states()
+                    conn.reset_audio_states(rotate=False)
 
                     if len(asr_audio_task) > 0:
-                        await conn.asr.handle_voice_stop(conn, asr_audio_task)
+                        await conn.asr.handle_voice_stop(
+                            conn, asr_audio_task, source_generation=source_generation
+                        )
         elif msg_json["state"] == "detect":
             # 设备本地唤醒词/按键识别是显式可信拾音事件。播放中收到它必须
             # 立即打断旧 TTS，并为后续真实用户语音打开正常 ASR 入口。

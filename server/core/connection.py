@@ -1812,12 +1812,19 @@ class ConnectionHandler:
         self.asr_audio.clear()
         self.current_audio_generation = None
 
-    def reset_audio_states(self):
+    def reset_audio_states(self, rotate: bool = True):
         """
         重置所有音频相关状态(VAD + ASR)，并使已入队旧帧失效。
+
+        rotate=True（默认）：真正的新一轮 reset/abort，递增 generation。
+        rotate=False：仅用于 listen stop 收尾，保留本轮音频的源 generation，
+        让正在进行的 ASR 仍属于本轮；之后的新一轮 reset/abort 仍会 rotate。
         """
-        # generation + drain 必须在同一把锁内完成，避免消费线程刚好取到旧帧。
-        self.audio_gate.rotate("audio_reset")
+        if rotate:
+            # generation + drain 必须在同一把锁内完成，避免消费线程刚好取到旧帧。
+            gen = self.audio_gate.rotate("audio_reset")
+        else:
+            gen = self.audio_gate.seal()
 
         # Reset VAD states
         self.client_audio_buffer.clear()
@@ -1835,9 +1842,11 @@ class ConnectionHandler:
         self.asr_audio.clear()
         self._barge_buf = b""
         self._barge_last_hit = 0
-        self.current_audio_generation = None
+        if rotate:
+            self.current_audio_generation = None
 
         self.logger.bind(tag=TAG).debug("All audio states reset.")
+        return gen
 
     def chat_and_close(self, text):
         """Chat with the user and then close the connection"""

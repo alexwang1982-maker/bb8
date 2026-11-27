@@ -1,19 +1,16 @@
-﻿python.exe : G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmp
-eg or avconv - defaulting to ffmpeg, but may not work
-所在位置 行:4 字符: 1
-+ & $py -B -m unittest tests.test_bb8_safe_test -v 2>&1 | Out-File -Fil ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (G:\openmuse\xia...ut may not work:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
+﻿COMMAND: G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe -B -m unittest tests.test_bb8_safe_test -v
+WORKDIR: D:\Temp\opencode\bb8-voice-p0\server
+RESULT: PRE-EXISTING FAIL + HANG. Killed process tree after 60s; no Ran/OK/FAILED summary was produced.
+NOTE: same FAIL/hang reproduced on untouched baseline 8197bbb; not caused by R1.
+--- STDERR (unittest verbose stream) ---
+G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
   warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
-test_safe_interface_is_awaited_before_main_services (tests.test_bb8_safe_test.AppStartupWiringTest.test_safe_interface_
-is_awaited_before_main_services) ... ok
+test_safe_interface_is_awaited_before_main_services (tests.test_bb8_safe_test.AppStartupWiringTest.test_safe_interface_is_awaited_before_main_services) ... ok
+test_ambiguous_head_result_stops_without_second_motor_or_post_status (tests.test_bb8_safe_test.Bb8SafeTest.test_ambiguous_head_result_stops_without_second_motor_or_post_status) ... FAIL
+test_closed_connection_removes_connection_without_mcp_call (tests.test_bb8_safe_test.Bb8SafeTest.test_closed_connection_removes_connection_without_mcp_call) ... ok
+test_concurrent_trigger_is_rejected_as_busy (tests.test_bb8_safe_test.Bb8SafeTest.test_concurrent_trigger_is_rejected_as_busy) ... 
+--- STDOUT (test registration logs) ---
 [bb8-safe-test] registered 14:c1:9f:50:fc:ec
-test_ambiguous_head_result_stops_without_second_motor_or_post_status (tests.test_bb8_safe_test.Bb8SafeTest.test_ambiguo
-us_head_result_stops_without_second_motor_or_post_status) ... FAIL
 [bb8-safe-test] registered 14:c1:9f:50:fc:ec
 [bb8-safe-test] purged 14:c1:9f:50:fc:ec
-test_closed_connection_removes_connection_without_mcp_call (tests.test_bb8_safe_test.Bb8SafeTest.test_closed_connection
-_removes_connection_without_mcp_call) ... ok
 [bb8-safe-test] registered 14:c1:9f:50:fc:ec

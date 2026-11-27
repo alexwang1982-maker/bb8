@@ -70,30 +70,46 @@ class AudioSourceGate:
             except queue.Empty:
                 return dropped
 
-    def _rotate(self, reason: str, normal_open: Optional[bool]) -> int:
-        with self._lock:
-            self._generation += 1
-            self.counters["generations"] += 1
-            if normal_open is not None:
-                self._normal_open = bool(normal_open)
-            self._reason = reason
-            self._drain(self.normal_queue)
-            self._drain(self.barge_queue)
-            return self._generation
+    # 调用方必须已持有 self._lock；状态读取、generation 递增、队列清理和
+    # normal_open 保留在同一个临界区完成，避免并发 suppress/open 被覆盖。
+    def _rotate_locked(self, reason: str, normal_open: Optional[bool]) -> int:
+        self._generation += 1
+        self.counters["generations"] += 1
+        if normal_open is not None:
+            self._normal_open = bool(normal_open)
+        self._reason = reason
+        self._drain(self.normal_queue)
+        self._drain(self.barge_queue)
+        return self._generation
 
     def suppress(self, reason: str) -> int:
         """Block normal ASR ingress; frames go only to the barge-in queue."""
-        return self._rotate(reason, False)
+        with self._lock:
+            return self._rotate_locked(reason, False)
 
     def open(self, reason: str) -> int:
         """Allow normal ASR ingress after a trusted listen/barge-in event."""
-        return self._rotate(reason, True)
+        with self._lock:
+            return self._rotate_locked(reason, True)
 
     def rotate(self, reason: str) -> int:
         """Invalidate in-flight frames without changing source permission."""
         with self._lock:
             current = self._normal_open
-        return self._rotate(reason, current)
+            return self._rotate_locked(reason, current)
+
+    def seal(self) -> int:
+        """Drain pending frames without rotating; return the still-valid generation.
+
+        Used by listen-stop finalization: the audio already copied for recognition
+        keeps its source generation, while queued frames from the same round are
+        discarded. A later reset/abort still rotates and invalidates that result.
+        """
+        with self._lock:
+            current = self._generation
+            self._drain(self.normal_queue)
+            self._drain(self.barge_queue)
+            return current
 
     def put(self, frame: bytes, source: str = "microphone") -> Tuple[str, GatedFrame]:
         with self._lock:
@@ -118,8 +134,9 @@ class AudioSourceGate:
             return "barge", item
 
     def is_current(self, generation: Optional[int]) -> bool:
+        # None 表示“没有可核验的音频来源”，绝不是有效授权，必须 fail-closed。
         if generation is None:
-            return True
+            return False
         with self._lock:
             return generation == self._generation
 

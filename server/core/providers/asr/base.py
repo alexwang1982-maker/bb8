@@ -94,13 +94,31 @@ class ASRProviderBase(ABC):
                 pcm_bytes = b"".join(conn.asr_audio)
                 # 检查是否有足够的音频数据（每帧1920字节，15帧约28800字节）
                 if len(pcm_bytes) > 1920 * 15:
-                    await self.handle_voice_stop(conn, [pcm_bytes])
+                    await self.handle_voice_stop(
+                        conn,
+                        [pcm_bytes],
+                        source_generation=getattr(conn, "current_audio_generation", None),
+                    )
                 conn.reset_audio_states()
 
     # 处理语音停止
-    async def handle_voice_stop(self, conn: "ConnectionHandler", asr_audio_task: List[bytes]):
-        """并行处理ASR和声纹识别；旧 generation 的结果直接丢弃。"""
-        generation = getattr(conn, "current_audio_generation", None)
+    async def handle_voice_stop(
+        self,
+        conn: "ConnectionHandler",
+        asr_audio_task: List[bytes],
+        source_generation: Optional[int] = None,
+    ):
+        """并行处理ASR和声纹识别；旧 generation 的结果直接丢弃。
+
+        source_generation 显式传递被识别音频的源 generation（listen stop 收尾
+        会在 reset 前保存它）。未显式传递时回退到连接上的当前 generation；
+        None 不是有效授权，is_current(None) 会 fail-closed。
+        """
+        generation = (
+            source_generation
+            if source_generation is not None
+            else getattr(conn, "current_audio_generation", None)
+        )
         if not conn.audio_gate.is_current(generation):
             conn.audio_gate.note_stale()
             return

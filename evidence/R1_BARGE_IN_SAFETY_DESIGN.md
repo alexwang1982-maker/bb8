@@ -23,7 +23,10 @@
 
 - `AudioSourceGate.generation`：每次 `suppress/open/rotate` 自增；帧入队时记录 generation。
 - 消费侧 `asr_text_priority_thread` 在派发前校验 generation；`handleAudioMessage()` 和 `handle_voice_stop()` 在识别前后再次校验。
-- `reset_audio_states()` 在锁内同时完成 generation 递增、ASR/barge 队列清空、VAD 状态复位、`asr_audio`/`_barge_buf` 清空。
+- `reset_audio_states(rotate=True)`（默认）在锁内同时完成 generation 递增、ASR/barge 队列清空、VAD 状态复位、`asr_audio`/`_barge_buf` 清空；`rotate=False` 仅用于 `listen stop` 收尾，通过 `AudioSourceGate.seal()` 在同一锁内清队列但保留本轮 generation，使刚复制出的音频仍属于本轮。
+- `AudioSourceGate.rotate/suppress/open` 的状态读取、generation 递增、双队列清理与 `normal_open` 写入全部在 `_rotate_locked()` 的同一临界区内完成，无锁窗口。
+- `handle_voice_stop()` 使用显式 `source_generation`；ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 直接 fail-closed，不是有效授权。
+- `handleAbortMessage()` 在进入时记录 playback token + sentence；等待 stop 发送期间若新轮次 TTS 已启动，旧 Abort 不再执行 `clearSpeakStatus()`，因此不会清除新播放态或重新开放音频入口。
 - `clear_queues()` 也清空两个音频队列和 `asr_audio`，保证 abort 路径不残留。
 - `client_is_speaking` 不再是唯一依据：必须同时满足 `tts_playback_active` 与 `tts_playback_token` 才认定播放态。
 - `send_tts_message("stop")` 的提前返回、发送异常、过期 sentence 都由 token + sentence 双条件收口；兜底 watchdog 防止异常导致播放态永久关闭拾音。
