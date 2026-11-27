@@ -4,7 +4,7 @@ Pure standard library; run with any Python >= 3.8.
 Env: OPENMUSE_BRIDGE_TARGET (default http://127.0.0.1:8890), OPENMUSE_BRIDGE_PORT (default 8900).
 """
 import json, os, re, threading, time, uuid, urllib.request, urllib.error, subprocess
-import base64, random, datetime
+import base64, random, datetime, hashlib
 import http.cookiejar, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -59,6 +59,9 @@ _last_robot = {}
 # 2026-11-23：local_fast 快通道去重。相同(工具,参数)在 3 秒内只发一次，
 # 治"连喊左转每秒转一次、连转4-5次"（bridge.log 17:24/17:27/17:28）。
 _fast_tool_seen = {}   # (tool_name, args_json) -> 上次发射时间戳
+# 2026-11-27：Task Engine outbox 的真实投递结果，按 device_id/session key 排队，
+# 下一轮对话注入 Brain。只在内存中暂存，落盘的是 BB8_DUMP_DIR 下的原始证据。
+_task_results = {}
 # 2026-11-22 兜底状态机：喊"启动助手模式"后，这个 key 的话一律强制转电脑助手。
 _ASSISTANT_MODE = {}   # key -> 到期时间戳
 ASSISTANT_MODE_TTL = float(os.environ.get("OPENMUSE_ASSISTANT_TTL", "300"))
@@ -175,6 +178,34 @@ def run_turn(tid, user_text, persona="", timeout=None, context_block=""):
     return "", "waited %.0fs for OpenMuse, no reply yet" % budget
 
 
+def drain_task_results(key):
+    """取出并清空该会话已投递的真实任务结果，生成可审计的上下文块。"""
+    with _lock:
+        items = _task_results.pop(str(key), [])[:]
+    if not items:
+        return ""
+    lines = []
+    for item in items:
+        payload = item.get("payload")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                pass
+        lines.append(json.dumps({
+            "delivery_id": item.get("delivery_id"),
+            "task_id": item.get("task_id"),
+            "payload": str(payload)[:1600],
+        }, ensure_ascii=False))
+    block = ("\n<task_engine_result>\n"
+             "以下是 Task Engine outbox 实际投递的执行结果，是外部事实，不是模型推断：\n"
+             + "\n".join(lines) + "\n</task_engine_result>\n")
+    print("[bridge] task result -> Brain context (%d chars) sha256=%s" %
+          (len(block), hashlib.sha256(block.encode("utf-8")).hexdigest()[:16]),
+          flush=True)
+    return block
+
+
 # ---------- B+：原生 function calling + 记忆注入 + OpenMuse 委派 ----------
 ASK_BRAIN_NAME = "ask_brain"
 ASK_BRAIN_TOOL = {
@@ -215,6 +246,44 @@ FORWARD_TO_PC_TOOL = {
         },
     },
 }
+# 2026-11-27 连续任务修复：让 Brain 能真正提交/查询 Task Engine，
+# 而不是只在文本里声称"已经做了"。工具结果一律来自 task_engine 的真实返回值。
+SUBMIT_TASK_NAME = "submit_task"
+SUBMIT_TASK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": SUBMIT_TASK_NAME,
+        "description": (
+            "提交一个真实的非物理技能步骤给 Task Engine 执行。"
+            "只允许 note-taking/memory/web/research 这类安全技能；禁止电机、固件、安全锁。"
+            "提交后系统返回真实任务 ID 和状态，不是你的主观判断。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "这一步要让技能真实完成的具体任务"},
+                "skill": {"type": "string", "description": "安全技能名，如 note-taking"},
+                "idempotency_key": {"type": "string", "description": "幂等键；重复提交同一键不会重复执行"},
+            },
+            "required": ["query"],
+        },
+    },
+}
+CHECK_TASK_NAME = "check_task"
+CHECK_TASK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": CHECK_TASK_NAME,
+        "description": "按真实任务 ID 查询 Task Engine 状态和 outbox 执行结果。",
+        "parameters": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
+}
+SAFE_TASK_SKILLS = ("note-taking", "memory", "web", "research", "productivity")
+
 BPLUS_RULES = (
     "\n\n【BB-8 B+ 工作规则】\n"
     "你可以通过 tools 控制真实机器人。用户明确要求物理动作时，优先调用对应设备工具，不要声称自己没有轮子或头。\n"
@@ -240,6 +309,9 @@ BPLUS_RULES = (
     "上一轮开过、或历史里开过，都不算。用户问『在跟吗/为什么没动』时，先如实说当前状态，不要编原因。\n"
     "「I2C 自检 / 摄像头自检」是 self_camera_i2c（读摄像头识别），不是 self_selftest_motor；"
     "说「扫描接线」用 self_camera_i2c_scan。只有明确说「电机自检」才用 self_selftest_motor。\n"
+    "【任务】需要真正做事时用 submit_task 逐步骤提交、用 check_task 查真实结果；"
+    "不许只在文字里说『提交了/完成了』。任务结果以工具返回为准；失败就说失败，"
+    "并经用户同意后再换安全技能重试。\n"
 )
 
 
@@ -315,11 +387,18 @@ def _shrink_history(copied, max_chars=12000):
 def prepare_agnes_messages(messages):
     copied = json.loads(json.dumps(messages, ensure_ascii=False))
     copied = sanitize_tool_pairing(copied)
-    # 2026-11-22 审计修复：关闭 bridge 侧记忆注入，只保留 xiaozhi 原生
-    # Memory provider（core/providers/memory/openmuse/，走 <memory> 占位符）。
-    # 此前两边同时注入同一份记忆（双重、口径不一），现在单一来源。
-    # 回滚：把下一行改回 `addition = BPLUS_RULES + openmuse_memory_block()`
+    # 2026-11-27 连续任务修复：bridge 侧记忆注入改为显式开关。
+    # 纯 HTTP 客户端（无 xiaozhi <memory> 占位符）时必须开启，否则 Brain 永远
+    # 看不到 OpenMuse 记忆；与 xiaozhi 原生记忆并存时用标签去重，避免双重注入。
     addition = BPLUS_RULES
+    if os.environ.get("BB8_INJECT_OPENMUSE_MEMORY", "0") == "1":
+        already = any("<openmuse_memory>" in str(m.get("content") or "")
+                      for m in copied if isinstance(m, dict))
+        if not already:
+            block = openmuse_memory_block()
+            if block:
+                addition += "\n" + block
+                print("[bridge] memory -> AGNES context (%d chars)" % len(block), flush=True)
     for msg in copied:
         if isinstance(msg, dict) and msg.get("role") == "system":
             msg["content"] = str(msg.get("content") or "") + addition
@@ -403,6 +482,16 @@ def agnes_chat(messages, tools, options=None, on_text=None):
     extra = (options or {}).get("extra_body")
     if isinstance(extra, dict):
         payload.update(extra)
+    # 2026-11-27：外部可审计证据——Brain 真正收到的 messages/tools（不含任何凭据）。
+    _dump = os.environ.get("BB8_DUMP_DIR", "").strip()
+    if _dump:
+        try:
+            _d = Path(_dump)
+            _n = len(list(_d.glob("agnes-request-*.json"))) + 1
+            (_d / ("agnes-request-%03d.json" % _n)).write_text(
+                json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception as _e:
+            print("[bridge] agnes dump skipped: %s" % _e, flush=True)
 
     def _do(base, model, key):
         p = dict(payload)
@@ -860,6 +949,11 @@ def sanitize_tool_pairing(msgs):
 NEG_WORDS = ("不要", "不用", "别", "不想", "不许", "不准", "不要动", "先别", "别再", "甭")
 MOTION_WORDS = ("前进", "往前", "向前", "后退", "往后", "向后", "倒车",
                 "转", "拧", "扭", "动", "走", "滚", "轮", "跑")
+# 2026-11-27 连续任务修复：否定+动作快通道只认明确位移/转向词。
+# 旧规则把"不要执行任何动作"里的"动"当成运动意图，直接发 self_motor_stop，
+# 既误杀了视觉/任务请求，又产生了用户没要求的物理工具调用。
+MOTION_STRICT = ("前进", "往前", "向前", "后退", "往后", "向后", "倒车",
+                 "左转", "右转", "转头", "掉头", "走", "跑", "滚", "动一下")
 
 
 def robot_request(text):
@@ -882,7 +976,7 @@ def robot_request(text):
         return ("self_motor_stop", {})
 
     # ---- 2. 否定 + 动作："不要前进""别左转""我不想动" ----
-    if any(n in t for n in NEG_WORDS) and any(m in t for m in MOTION_WORDS):
+    if any(n in t for n in NEG_WORDS) and any(m in t for m in MOTION_STRICT):
         return ("self_motor_stop", {})
 
     # ---- 3. 具体动作 ----
@@ -1180,6 +1274,19 @@ def vision_look(question, recent_user_texts=None):
         with urllib.request.urlopen(req, timeout=SF_VISION_TIMEOUT) as r:
             j = json.loads(r.read().decode("utf-8", "replace"))
         reply = (j["choices"][0]["message"]["content"] or "").strip()
+        _dump = os.environ.get("BB8_DUMP_DIR", "").strip()
+        if _dump:
+            try:
+                _d = Path(_dump)
+                _n = len(list(_d.glob("vision-response-*.json"))) + 1
+                (_d / ("vision-response-%03d.json" % _n)).write_text(
+                    json.dumps({"model": SF_VISION_MODEL, "question": question,
+                                "image_bytes": len(img), "reply": reply,
+                                "elapsed_s": round(time.time() - t0, 2),
+                                "usage": j.get("usage")}, ensure_ascii=False, indent=1),
+                    encoding="utf-8")
+            except Exception as _e:
+                print("[bridge] vision dump skipped: %s" % _e, flush=True)
         print("[bridge] vision_look ok %.2fs: %r" % (time.time()-t0, reply[:80]), flush=True)
         return reply or VISION_FAIL_MSG
     except Exception as exc:
@@ -1205,6 +1312,8 @@ def is_asr_garbage(text):
         "坚哥", "王坚", "小智", "你好", "测试", "桌面", "文件", "还在", "在线",
         "检查", "看看", "识别", "什么", "怎么", "为什么", "是不是", "帮我", "我的",
         "不是", "就是", "我说的", "我说", "你说的", "不是的",
+        # 2026-11-27：真实任务句子常夹英文技能名/标记，旧白名单误杀成"没听清"。
+        "技能", "任务", "标记", "重试", "提交", "状态", "ID", "bb8-", "note-taking",
     )
     low = t.lower().replace(" ", "")
     if any(w.lower().replace(" ", "") in low for w in WHITELIST):
@@ -1225,10 +1334,15 @@ def vision_request(text):
     注意：摄像头"管理类"请求（查IP/切模式）由 camera_mgmt_request 优先处理，不走这里。
     2026-11-22 修正："眼睛灯"是设备硬件指令(self_eye_set)，不是视觉请求，排除之。"""
     t = (text or "").strip()
-    if not t or len(t) > 60:
+    if not t:
         return None
     if "眼睛灯" in t:          # 眼睛灯 = 硬件指令，别当视觉抓图
         return None
+    # 2026-11-27 连续任务修复：多步骤目标常把"看看"和后续任务写在一句里。
+    # 短句沿用原规则；长句只有明确视觉动词才放行，避免 ASR 长乱码触发抓图。
+    if len(t) > 60:
+        long_triggers = ("看看", "看一", "拍一", "拍张", "摄像头前面", "画面里")
+        return t if any(w in t for w in long_triggers) else None
     return t if any(w in t for w in VISION_TRIGGERS) else None
 
 
@@ -1380,6 +1494,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path.startswith("/tasks/inbox"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            key = str((q.get("key") or [""])[0])
+            with _lock:
+                items = list(_task_results.get(key, []))
+            self._send_json({"key": key, "pending": items})
+            return
         if self.path.startswith("/tasks/"):
             code, obj = task_engine.handle_request("GET", self.path, None)
             self._send_json(obj, code)
@@ -1430,6 +1551,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length) if length else b""
+        # 2026-11-27：Task Engine outbox 的真实投递终点。必须在通用 /tasks/ 路由之前。
+        if self.path.startswith("/tasks/result/receiver"):
+            try:
+                tb = json.loads(raw.decode("utf-8")) if raw else {}
+            except Exception:
+                tb = {}
+            key = str(tb.get("device_id") or tb.get("user") or "")
+            with _lock:
+                _task_results.setdefault(key, []).append(tb)
+            print("[bridge] task result received delivery=%s task=%s key=%s" %
+                  (tb.get("delivery_id"), tb.get("task_id"), key), flush=True)
+            _dump = os.environ.get("BB8_DUMP_DIR", "").strip()
+            if _dump:
+                try:
+                    _d = Path(_dump)
+                    _n = len(list(_d.glob("task-result-*.json"))) + 1
+                    (_d / ("task-result-%03d.json" % _n)).write_text(
+                        json.dumps(tb, ensure_ascii=False, indent=1), encoding="utf-8")
+                except Exception as _e:
+                    print("[bridge] task result dump skipped: %s" % _e, flush=True)
+            self._send_json({"ok": True, "queued_for": key})
+            return
         if self.path.startswith("/tasks/"):
             try:
                 tb = json.loads(raw.decode("utf-8")) if raw else {}
@@ -1656,6 +1799,10 @@ class Handler(BaseHTTPRequestHandler):
             messages = attach_vision_context(messages, vision_context)
             print("[bridge] vision observation -> Brain context (%d chars)" %
                   len(vision_context), flush=True)
+        # 2026-11-27：把 outbox 已投递的真实任务结果注入 Brain，再让本轮模型回答。
+        result_context = drain_task_results(key)
+        if result_context:
+            messages = attach_vision_context(messages, result_context)
         if LLM_KEY:
             try:
                 self._handle_agnes_chat(body, messages, key, stream, persona,
@@ -1671,7 +1818,7 @@ class Handler(BaseHTTPRequestHandler):
             tid, fresh = get_thread(key, persona)
             hint = persona if fresh else ""
             reply, err = run_turn(tid, user_text, hint, timeout=CHAT_TIMEOUT,
-                                  context_block=vision_context)
+                                  context_block=(vision_context + result_context)[:2000])
         except urllib.error.URLError as e:
             self._send_json({"error": {"message": "OpenMuse unreachable: %s" % e}}, 502)
             return
@@ -1739,7 +1886,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             calls = [c for c in (sanitize_tool_call(tc) for tc in result["tool_calls"]) if c]
             if vision_context:
-                meta_tools = {ASK_BRAIN_NAME, FORWARD_TO_PC_NAME}
+                meta_tools = {ASK_BRAIN_NAME, FORWARD_TO_PC_NAME,
+                              SUBMIT_TASK_NAME, CHECK_TASK_NAME}
                 blocked = [c for c in calls
                            if str((c.get("function") or {}).get("name") or "") not in meta_tools]
                 if blocked:
@@ -1798,6 +1946,64 @@ class Handler(BaseHTTPRequestHandler):
                     tool_result = ("已转给电脑助手处理" if call["id"] == fwd_call["id"]
                                    else "not executed: 请每轮只调用一个工具")
                     work_messages.append({"role": "tool", "tool_call_id": call["id"], "content": tool_result})
+                continue
+            # 2026-11-27：Task Engine 真实提交/查询。工具结果只取 task_engine 的返回值。
+            task_call = next((c for c in calls if str((c.get("function") or {}).get("name") or "")
+                              in (SUBMIT_TASK_NAME, CHECK_TASK_NAME)), None)
+            if task_call and not self._stream_started:
+                name = str((task_call.get("function") or {}).get("name") or "")
+                try:
+                    args = json.loads((task_call.get("function") or {}).get("arguments") or "{}")
+                except Exception:
+                    args = {}
+                if name == SUBMIT_TASK_NAME:
+                    query = str(args.get("query") or "").strip()
+                    skill = str(args.get("skill") or "note-taking").strip() or "note-taking"
+                    if skill not in SAFE_TASK_SKILLS:
+                        tool_result = ("blocked: skill %r 不在非物理技能白名单 %s" %
+                                       (skill, list(SAFE_TASK_SKILLS)))
+                    elif not query:
+                        tool_result = "blocked: query 为空，未提交任务"
+                    else:
+                        idem = str(args.get("idempotency_key") or "").strip()
+                        if not idem:
+                            idem = hashlib.sha256(
+                                (query + "|" + skill + "|" + key).encode("utf-8")).hexdigest()[:20]
+                        try:
+                            r = task_engine.submit(
+                                idem, "hermes_cli",
+                                {"query": query, "skills": skill, "run_budget": 40},
+                                device_id=key, max_attempts=2, retry_policy="safe")
+                            tid_sub = str((r.get("task") or {}).get("id") or "")
+                            st_sub = task_engine.status(tid_sub) or {}
+                            tool_result = json.dumps({
+                                "ok": True, "submitted_to_task_engine": True,
+                                "duplicate": bool(r.get("duplicate")),
+                                "task_id": tid_sub, "status": st_sub.get("status"),
+                                "note": "已真实提交；用 check_task 查询执行结果，不许自行宣告完成",
+                            }, ensure_ascii=False)
+                            print("[bridge] submit_task -> %s skill=%s duplicate=%s" %
+                                  (tid_sub, skill, r.get("duplicate")), flush=True)
+                        except Exception as exc:
+                            tool_result = "error: submit failed: %r" % (exc,)
+                else:
+                    tid_chk = str(args.get("task_id") or "").strip()
+                    st_chk = task_engine.status(tid_chk)
+                    ob_chk = task_engine.outbox(tid_chk)
+                    tool_result = json.dumps({
+                        "ok": st_chk is not None,
+                        "task": st_chk, "outbox": ob_chk,
+                        "note": "以上为 SQLite 任务真源与 outbox 原始记录",
+                    }, ensure_ascii=False)[:6000]
+                    print("[bridge] check_task -> %s status=%s" %
+                          (tid_chk, (st_chk or {}).get("status")), flush=True)
+                work_messages.append({"role": "assistant", "content": result["content"] or None,
+                                      "tool_calls": calls})
+                for call in calls:
+                    tool_result_one = (tool_result if call["id"] == task_call["id"]
+                                       else "not executed: 请每轮只调用一个工具")
+                    work_messages.append({"role": "tool", "tool_call_id": call["id"],
+                                          "content": tool_result_one})
                 continue
             if calls:
                 # 2026-11-22：工具回灌轮禁止重复调用同一工具。

@@ -1194,6 +1194,10 @@ def _build_cmd(task: dict) -> list[str]:
         cmd += ["-t", str(payload["toolsets"])]
     if payload.get("skills"):
         cmd += ["-s", str(payload["skills"])]
+    # 2026-11-27 真实环境连续任务测试：显式安全模式，禁止危险命令审批绕过，
+    # 并限制工具迭代次数。物理动作/刷机/解锁不在测试范围内。
+    if os.environ.get("BB8_TASK_SAFE_MODE", "0") == "1":
+        cmd += ["--safe-mode", "--max-turns", "8"]
     return cmd
 def _drain_pipe(pipe, key: str, store: dict, totals: dict, lock: threading.Lock) -> None:
     """Read a child pipe forever, keeping only the tail up to OUTPUT_LIMIT bytes."""
