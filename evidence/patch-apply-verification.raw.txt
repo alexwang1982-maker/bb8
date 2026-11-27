@@ -1,0 +1,6 @@
+APPLY_CHECK 
+APPLY_CHECK_PASS 
+APPLY_PASS 
+SHA256 的 D:\Temp\opencode\bb8-vision-brain-work\apply-check\bridge.py 哈希:
+942b7ebf1bee39ac0a00848de53ef90fe3110c511a200283f54e19e9bc933e60
+CertUtil: -hashfile 命令成功完成。
