@@ -208,6 +208,44 @@ def submit_direct(key, step_id, query, skill="document-to-action-items", marker=
     })
 
 
+# ---------------------------------------------------------------- case 0
+def case_marker_guard(env):
+    """Real HTTP proof that missing/blank markers are refused and wrong markers fail."""
+    t0 = time.time()
+    base = {"kind": "hermes_cli", "payload": {"query": "marker guard"}}
+    probes = {
+        "missing_marker": api("/tasks/submit", {**base, "idempotency_key": "guard-no-marker-" + env.tag,
+                                                "step_id": "GUARD-NOMARKER-" + env.tag}),
+        "blank_marker": api("/tasks/submit", {**base, "idempotency_key": "guard-blank-" + env.tag,
+                                              "step_id": "GUARD-BLANK-" + env.tag,
+                                              "payload": {"query": "marker guard", "_expected_marker": "   "}}),
+        "missing_step_id": api("/tasks/submit", {"kind": "hermes_cli",
+                                                 "idempotency_key": "guard-nostep-" + env.tag,
+                                                 "payload": {"query": "marker guard",
+                                                             "_expected_marker": env.marker("GUARD")}}),
+    }
+    marker = env.marker("GUARD")
+    sub = submit_direct("guard-correct-" + env.tag, "GUARD-" + env.tag,
+                        stable_query(marker), marker=marker)
+    tid = (sub.get("json") or {}).get("task", {}).get("id", "")
+    v_ok = wait_verify(tid, marker) if tid else {}
+    v_wrong = verify(tid, "WRONG-" + marker) if tid else {}
+    v_blank = verify(tid, "   ") if tid else {}
+    env.dump("t0-marker-guard.raw.json", {"submit_probes": probes, "correct_submit": sub,
+                                          "correct_verify": v_ok, "wrong_marker_verify": v_wrong,
+                                          "blank_marker_verify": v_blank})
+    ok = bool(all(p.get("status") == 400 for p in probes.values()) and
+              v_ok.get("verified") and not v_wrong.get("verified") and
+              "marker_missing" in str(v_wrong.get("reason")) and
+              not v_blank.get("verified") and
+              "expected_marker_missing" in str(v_blank.get("reason")))
+    return result(ok, "T0-marker-guard", ["t0-marker-guard.raw.json"],
+                  {"task_id": tid, "correct_verified": v_ok.get("verified"),
+                   "wrong_reason": v_wrong.get("reason"), "blank_reason": v_blank.get("reason"),
+                   "submit_probe_status": {k: v.get("status") for k, v in probes.items()}},
+                  time.time() - t0)
+
+
 # ---------------------------------------------------------------- case 1
 def case_single_success(env):
     t0 = time.time()
@@ -396,6 +434,48 @@ def case_idempotency(env):
                    "verified": v.get("verified")}, time.time() - t0)
 
 
+def case_failed_dependency_blocked(env):
+    """A failed predecessor must block the next step: no task is created."""
+    t0 = time.time()
+    fail_marker = env.marker("DEPF")
+    fail_step = "DEPF-" + env.tag
+    sfail = submit_direct("dep-fail-" + env.tag, fail_step, "intentional dependency failure",
+                          skill="__definitely_not_a_real_skill__", marker=fail_marker,
+                          max_attempts=1)
+    failed_id = (sfail.get("json") or {}).get("task", {}).get("id", "")
+    vf = wait_verify(failed_id, fail_marker) if failed_id else {}
+    step = "BLOCKED-" + env.tag
+    marker = env.marker("BLOCKED")
+    prompt = ("这是工具调用测试：你必须调用 submit_task 提交下一步，不要只回答，"
+              "也不要判断技能是否存在。参数：query=%r；skill=document-to-action-items；"
+              "idempotency_key=%s；step_id=%s；depends_on=%s；expected_marker=%s。"
+              "前置任务已失败，系统必须拒绝提交本步；拒绝后不要重新提交。" %
+              (stable_query(marker), "dep-blocked-" + env.tag, step, failed_id, marker))
+    r = chat(usermsg(prompt))
+    env.dump("t7-failed-dependency-submit.raw.json", {"failed_submit": sfail,
+                                                      "failed_verification": vf, "brain": r})
+    dumps = []
+    # The bridge process writes AGNES dumps to its BB8_DUMP_DIR, which may be a
+    # different tag directory than this harness run. Step IDs are tag-unique, so
+    # search all run directories and record the relative path.
+    for p in sorted((ROOT / "evidence" / "real-env-continuous").glob("*/agnes-request-*.json")):
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        if "dependency_failed_verification" in txt and step in txt:
+            dumps.append(str(p.relative_to(ROOT)))
+    blocked_task = find_step(step)
+    env.dump("t7-failed-dependency-result.raw.json", {"blocked_dumps": dumps,
+                                                      "task_for_blocked_step": blocked_task,
+                                                      "events": events(failed_id) if failed_id else []})
+    ok = bool(vf.get("terminal") and not vf.get("verified") and dumps and not blocked_task)
+    return result(ok, "T7-failed-dependency-blocked",
+                  ["t7-failed-dependency-submit.raw.json", "t7-failed-dependency-result.raw.json",
+                   "agnes-request-*.json:dependency_failed_verification"],
+                  {"failed_task": failed_id, "failed_status": vf.get("status"),
+                   "blocked_step": step, "blocked_evidence": dumps,
+                   "task_created": bool(blocked_task), "reply": content(r)[:250]},
+                  time.time() - t0)
+
+
 def case_outbox_reinject(env):
     """T6 probe: outbox delivery -> Brain context injection.
 
@@ -459,10 +539,12 @@ def main():
     ap.add_argument("--only", default="", help="only run cases whose name contains this text")
     args = ap.parse_args()
     env = Env(args.tag)
-    cases = [case_single_success, case_single_failure, case_two_step,
-             case_failure_adjustment, case_idempotency, case_outbox_reinject]
+    cases = [case_marker_guard, case_single_success, case_single_failure, case_two_step,
+             case_failure_adjustment, case_idempotency, case_failed_dependency_blocked,
+             case_outbox_reinject]
     if args.only:
-        cases = [fn for fn in cases if args.only.lower() in fn.__name__.lower()]
+        keys = [k.strip().lower() for k in args.only.split(",") if k.strip()]
+        cases = [fn for fn in cases if any(k in fn.__name__.lower() for k in keys)]
     results = []
     for fn in cases:
         try:

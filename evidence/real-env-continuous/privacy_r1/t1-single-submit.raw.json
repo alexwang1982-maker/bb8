@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 13.533,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-391156419f9740b5bc32",
+    "object": "chat.completion",
+    "created": 1795782717,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "提交成功：\n- task_id: `tsk_65b1acefd38b4bbb`\n- status: `queued`"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

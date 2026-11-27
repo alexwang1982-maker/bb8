@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 11.601,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-64d10b5790c94c1d99da",
+    "object": "chat.completion",
+    "created": 1795782778,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "任务 tsk_e72b3078080d492a 实际结果：status=failed（已终态，attempt 1）。\n\n- exit_code：1（非 0）\n- expected_marker：BB8-PRIVACY-R1-FAIL-OK，未出现\n- verified：false（四重校验全部未过：status=failed、error 非空、exit_code≠0、标记缺失）\n- 错误原因：技能解析失败 —— `Error: Unknown skill(s): __definitely_not_a_real_skill__`，即该 skill 不存在，属于故意构造的真实失败。\n\n结论：此任务失败，未成功。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

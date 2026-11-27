@@ -1,0 +1,50 @@
+{
+  "blocked_dumps": [
+    "evidence\\real-env-continuous\\privacy_r1\\agnes-request-020.json"
+  ],
+  "task_for_blocked_step": null,
+  "events": [
+    {
+      "type": "result_delivered",
+      "ts": 1795783274.0193236,
+      "detail_json": {
+        "delivery_id": "tsk_3b6a062970f24912:g1"
+      }
+    },
+    {
+      "type": "failed",
+      "ts": 1795783272.5028942,
+      "detail_json": {
+        "attempt": 1,
+        "exit_code": 1,
+        "safe": true,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: intentional dependency failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 130,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        }
+      }
+    },
+    {
+      "type": "claimed",
+      "ts": 1795783265.1006336,
+      "detail_json": {
+        "pid": 1120,
+        "generation": 1
+      }
+    },
+    {
+      "type": "submitted",
+      "ts": 1795783264.6556902,
+      "detail_json": {
+        "kind": "hermes_cli",
+        "device_id": "",
+        "retry_policy": "safe",
+        "step_id": "DEPF-privacy_r3"
+      }
+    }
+  ]
+}

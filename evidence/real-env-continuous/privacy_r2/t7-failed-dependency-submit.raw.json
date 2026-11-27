@@ -1,0 +1,108 @@
+{
+  "failed_submit": {
+    "status": 202,
+    "elapsed_s": 0.051,
+    "raw": "{\"task\": {\"id\": \"tsk_0d65e46ff2e14e50\", \"idempotency_key\": \"dep-fail-privacy_r2\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"intentional dependency failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_expected_marker\": \"BB8-PRIVACY-R2-DEPF-OK\", \"_device_id\": \"\", \"_step_id\": \"DEPF-privacy_r2\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795783200.4698374, \"created_at\": 1795783200.4698374, \"updated_at\": 1795783200.4698374, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"DEPF-privacy_r2\"}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_0d65e46ff2e14e50",
+        "idempotency_key": "dep-fail-privacy_r2",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "intentional dependency failure",
+          "skills": "__definitely_not_a_real_skill__",
+          "run_budget": 60,
+          "_expected_marker": "BB8-PRIVACY-R2-DEPF-OK",
+          "_device_id": "",
+          "_step_id": "DEPF-privacy_r2"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795783200.4698374,
+        "created_at": 1795783200.4698374,
+        "updated_at": 1795783200.4698374,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null,
+        "step_id": "DEPF-privacy_r2"
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "failed_verification": {
+    "task_id": "tsk_0d65e46ff2e14e50",
+    "step_id": "DEPF-privacy_r2",
+    "status": "failed",
+    "terminal": true,
+    "verified": false,
+    "reason": "status=failed;error_not_empty;exit_code_not_zero;marker_missing:BB8-PRIVACY-R2-DEPF-OK",
+    "error": {
+      "exit_code": 1,
+      "stderr": "",
+      "stdout": "Query: intentional dependency failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+      "stdout_bytes": 130,
+      "stderr_bytes": 0,
+      "output_truncated": false
+    },
+    "result": null,
+    "attempt": 1,
+    "created_at": 1795783200.4698374,
+    "finished_at": 1795783208.6291974,
+    "attempt_history": [
+      {
+        "type": "failed",
+        "ts": 1795783208.6291974,
+        "detail": {
+          "attempt": 1,
+          "exit_code": 1,
+          "safe": true,
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: intentional dependency failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+            "stdout_bytes": 130,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          }
+        }
+      }
+    ]
+  },
+  "brain": {
+    "status": 200,
+    "elapsed_s": 19.094,
+    "raw": "[PRIVATE MEMORY REDACTED]",
+    "json": {
+      "id": "chatcmpl-fa8dc99d02df4216a3ee",
+      "object": "chat.completion",
+      "created": 1795783229,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "提交被拒绝了：前置任务 `tsk_0d65e46ff2e14e50` 状态 failed、校验未通过，所以本步没有提交，我也不会再重新提交。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

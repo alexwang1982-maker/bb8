@@ -1,0 +1,11 @@
+{
+  "injected_dumps": [
+    "agnes-request-015.json",
+    "agnes-request-016.json"
+  ],
+  "brain_context_logs": [
+    "[20:32:46] [bridge] task result -> Brain context (1890 chars) sha256=bd9adf9c13211b80",
+    "[20:35:36] [bridge] task result -> Brain context (1869 chars) sha256=964e530ed8f49c3e",
+    "[20:37:46] [bridge] task result -> Brain context (3667 chars) sha256=4fbaec2e3e5ea06a"
+  ]
+}

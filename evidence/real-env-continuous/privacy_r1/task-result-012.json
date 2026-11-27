@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_3b6a062970f24912:g1",
+ "task_id": "tsk_3b6a062970f24912",
+ "device_id": "",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: intentional dependency failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+   "stdout_bytes": 130,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}

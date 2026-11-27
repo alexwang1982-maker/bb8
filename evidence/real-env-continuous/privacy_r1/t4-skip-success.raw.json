@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 9.955,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-e736281df2a144199605",
+    "object": "chat.completion",
+    "created": 1795782958,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "工具返回：该步骤已被系统识别为“已成功步骤”并跳过（skipped: true，reason: step_already_verified_succeeded），未重复执行。任务 ADJ-A-privacy_r1（tsk_d83c26e50f764180）状态为 succeeded、已验证（verified: true）。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

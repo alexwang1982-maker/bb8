@@ -1,0 +1,45 @@
+{
+  "tag": "privacy_r2",
+  "bridge": "http://127.0.0.1:8910",
+  "results": [
+    {
+      "case": "T0-marker-guard",
+      "pass": true,
+      "external_evidence": [
+        "t0-marker-guard.raw.json"
+      ],
+      "observed": {
+        "task_id": "tsk_d7cbb0c25bd84f13",
+        "correct_verified": true,
+        "wrong_reason": "marker_missing:WRONG-BB8-PRIVACY-R2-GUARD-OK",
+        "blank_reason": "expected_marker_missing_or_blank",
+        "submit_probe_status": {
+          "missing_marker": 400,
+          "blank_marker": 400,
+          "missing_step_id": 400
+        }
+      },
+      "elapsed_s": 50.73
+    },
+    {
+      "case": "T7-failed-dependency-blocked",
+      "pass": false,
+      "external_evidence": [
+        "t7-failed-dependency-submit.raw.json",
+        "t7-failed-dependency-result.raw.json",
+        "agnes-request-*.json:dependency_failed_verification"
+      ],
+      "observed": {
+        "failed_task": "tsk_0d65e46ff2e14e50",
+        "failed_status": "failed",
+        "blocked_step": "BLOCKED-privacy_r2",
+        "blocked_evidence": [],
+        "task_created": false,
+        "reply": "提交被拒绝了：前置任务 `tsk_0d65e46ff2e14e50` 状态 failed、校验未通过，所以本步没有提交，我也不会再重新提交。"
+      },
+      "elapsed_s": 29.23
+    }
+  ],
+  "pass_all": false,
+  "judgement": "external Task Engine verify + result_outbox + task_events only"
+}

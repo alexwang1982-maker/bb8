@@ -1,0 +1,151 @@
+{
+  "submit": {
+    "status": 202,
+    "elapsed_s": 0.051,
+    "raw": "{\"task\": {\"id\": \"tsk_e72b3078080d492a\", \"idempotency_key\": \"closure-fail-privacy_r1\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"intentional real skill resolution failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_expected_marker\": \"BB8-PRIVACY-R1-FAIL-OK\", \"_device_id\": \"\", \"_step_id\": \"STEP-FAIL-privacy_r1\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795782756.400098, \"created_at\": 1795782756.400098, \"updated_at\": 1795782756.400098, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"STEP-FAIL-privacy_r1\"}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_e72b3078080d492a",
+        "idempotency_key": "closure-fail-privacy_r1",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "intentional real skill resolution failure",
+          "skills": "__definitely_not_a_real_skill__",
+          "run_budget": 60,
+          "_expected_marker": "BB8-PRIVACY-R1-FAIL-OK",
+          "_device_id": "",
+          "_step_id": "STEP-FAIL-privacy_r1"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795782756.400098,
+        "created_at": 1795782756.400098,
+        "updated_at": 1795782756.400098,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null,
+        "step_id": "STEP-FAIL-privacy_r1"
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "verification": {
+    "task_id": "tsk_e72b3078080d492a",
+    "step_id": "STEP-FAIL-privacy_r1",
+    "status": "failed",
+    "terminal": true,
+    "verified": false,
+    "reason": "status=failed;error_not_empty;exit_code_not_zero;marker_missing:BB8-PRIVACY-R1-FAIL-OK",
+    "error": {
+      "exit_code": 1,
+      "stderr": "",
+      "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+      "stdout_bytes": 141,
+      "stderr_bytes": 0,
+      "output_truncated": false
+    },
+    "result": null,
+    "attempt": 1,
+    "created_at": 1795782756.400098,
+    "finished_at": 1795782764.8672793,
+    "attempt_history": [
+      {
+        "type": "failed",
+        "ts": 1795782764.8827834,
+        "detail": {
+          "attempt": 1,
+          "exit_code": 1,
+          "safe": true,
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+            "stdout_bytes": 141,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          }
+        }
+      }
+    ]
+  },
+  "outbox": [
+    {
+      "delivery_id": "tsk_e72b3078080d492a:g1",
+      "task_id": "tsk_e72b3078080d492a",
+      "device_id": "",
+      "payload_json": {
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 141,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        },
+        "exit_code": 1,
+        "unknown_side_effects": false
+      },
+      "delivered": 1,
+      "attempts": 0,
+      "next_attempt_at": 0.0,
+      "last_error": null,
+      "dead_letter": 0,
+      "created_at": 1795782764.8827834,
+      "delivered_at": 1795782766.0985785
+    }
+  ],
+  "events": [
+    {
+      "type": "result_delivered",
+      "ts": 1795782766.194892,
+      "detail_json": {
+        "delivery_id": "tsk_e72b3078080d492a:g1"
+      }
+    },
+    {
+      "type": "failed",
+      "ts": 1795782764.8827834,
+      "detail_json": {
+        "attempt": 1,
+        "exit_code": 1,
+        "safe": true,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 141,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        }
+      }
+    },
+    {
+      "type": "claimed",
+      "ts": 1795782756.6022735,
+      "detail_json": {
+        "pid": 1120,
+        "generation": 1
+      }
+    },
+    {
+      "type": "submitted",
+      "ts": 1795782756.4013724,
+      "detail_json": {
+        "kind": "hermes_cli",
+        "device_id": "",
+        "retry_policy": "safe",
+        "step_id": "STEP-FAIL-privacy_r1"
+      }
+    }
+  ]
+}

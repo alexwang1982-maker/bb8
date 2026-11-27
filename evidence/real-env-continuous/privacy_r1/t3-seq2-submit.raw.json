@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 77.294,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-e884ed5d0173458185e6",
+    "object": "chat.completion",
+    "created": 1795782855,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "task_id：tsk_24fa97ac2287499b"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

@@ -1,0 +1,28 @@
+{
+  "tag": "privacy_r3",
+  "bridge": "http://127.0.0.1:8910",
+  "results": [
+    {
+      "case": "T7-failed-dependency-blocked",
+      "pass": true,
+      "external_evidence": [
+        "t7-failed-dependency-submit.raw.json",
+        "t7-failed-dependency-result.raw.json",
+        "agnes-request-*.json:dependency_failed_verification"
+      ],
+      "observed": {
+        "failed_task": "tsk_3b6a062970f24912",
+        "failed_status": "failed",
+        "blocked_step": "BLOCKED-privacy_r3",
+        "blocked_evidence": [
+          "evidence\\real-env-continuous\\privacy_r1\\agnes-request-020.json"
+        ],
+        "task_created": false,
+        "reply": "提交被拒绝了，本步没有执行。\n\n原因：前置任务 `tsk_3b6a062970f24912`（步骤 DEPF-privacy_r3）校验未通过——状态 failed、有 error、exit_code=1、且缺少结果标记 BB8-PRIVACY-R3-DEPF-OK（其 stdout 报 \"Unknown skill(s): __definitely_not_a_real_skill__\"）。\n\n按规则，依赖没真实成功就不能提交本步，且已失败的不重复提交。需要你先决定怎么处理前置任务（调整后重新"
+      },
+      "elapsed_s": 16.55
+    }
+  ],
+  "pass_all": true,
+  "judgement": "external Task Engine verify + result_outbox + task_events only"
+}

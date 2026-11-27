@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_e72b3078080d492a:g1",
+ "task_id": "tsk_e72b3078080d492a",
+ "device_id": "",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+   "stdout_bytes": 141,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}

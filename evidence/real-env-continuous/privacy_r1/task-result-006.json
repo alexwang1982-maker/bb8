@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_448c675fa6fa473c:g1",
+ "task_id": "tsk_448c675fa6fa473c",
+ "device_id": "",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+   "stdout_bytes": 118,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}
