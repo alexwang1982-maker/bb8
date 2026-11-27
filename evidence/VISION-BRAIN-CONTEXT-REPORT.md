@@ -77,21 +77,26 @@ git apply --unsafe-paths BB8-vision-brain-context.normalized.diff           # ex
 测试脚本 SHA256：`A23F537E3F782C09586D4BFBCA9678491AD692892EE07F2DFD61E86C8D9CE8EA`
 真实 diff SHA256：`40677AE9F37A019EF6E737E645E75D39B0D76E1342582810B638B1048B164EF4`
 
-## 5. GitHub 推送状态（未成功）
+## 5. GitHub 推送状态（已成功）
 
-本地分支 `feat/vision-brain-context` 已提交，但 GitHub 写入失败。按用户要求重试 5 次，全部返回同一认证错误：
+最初 5 次重试均因旧 token 失效而返回认证错误（原始输出保留在 `evidence/github-push-retry.raw.txt`）。
+用户提供新的有效 PAT 后，已把凭据写入本机 Git 凭据管理器（host=`gh-proxy.com`，username=`x-access-token`；token 不写入仓库、不在输出中回显），
+并关闭交互提示后重新推送，结果成功：
 
 ```
-remote: Invalid username or token. Password authentication is not supported for Git operations.
-fatal: Authentication failed for 'https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git/'
-EXIT=128
+To https://gh-proxy.com/https://github.com/alexwang1982-maker/bb8.git
+ * [new branch]      feat/vision-brain-context -> feat/vision-brain-context
+branch 'feat/vision-brain-context' set up to track 'origin/feat/vision-brain-context'.
+Everything up-to-date
+056f32371f386885d68b6b656dee5e5351759152	refs/heads/feat/vision-brain-context
+056f32371f386885d68b6b656dee5e5351759152
 ```
 
-原因：全局 Git 配置把 `https://github.com/` 改写为 `https://gh-proxy.com/https://github.com/`；
-凭据管理器对 gh-proxy host 无有效凭据会弹登录框；本机存量的 GitHub 凭据被 GitHub 判定为无效 token。
-直连 `github.com:443` 网络不可达。远端分支**未创建**，不能声称已推送。
+首次成功推送的功能提交 SHA：`056f32371f386885d68b6b656dee5e5351759152`。
+当时 `git ls-remote` 确认远端分支与本地 HEAD 完全一致。
+随后追加的“推送成功证据”commit 会改变分支 HEAD；最终 SHA 以分支最新提交为准。
 
-原始重试输出：`evidence/github-push-retry.raw.txt`。
+原始验证输出：`evidence/github-push-verify.raw.txt`。
 
 ## 6. 边界与已知限制
 
