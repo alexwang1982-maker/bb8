@@ -16,7 +16,8 @@ from privacy import scrub_bytes  # noqa: E402
 # Rule/test definitions contain generic marker phrases, not captured secrets.
 SKIP_PATHS = {
     "tools/privacy.py", "tools/scrub_evidence.py", "tools/privacy_scan.py",
-    "tools/filter_index_privacy.py", "tests/test_privacy_guard.py",
+    "tools/privacy_scan_remote.py", "tools/filter_index_privacy.py",
+    "tests/test_privacy_guard.py",
 }
 
 

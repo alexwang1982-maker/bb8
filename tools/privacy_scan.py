@@ -25,7 +25,8 @@ from privacy import find_hits_in_bytes  # noqa: E402
 # contain fake credential/memory shapes, never captured private content.
 SKIP_PATHS = {
     "tools/privacy.py", "tools/scrub_evidence.py", "tools/privacy_scan.py",
-    "tools/filter_index_privacy.py", "tests/test_privacy_guard.py",
+    "tools/privacy_scan_remote.py", "tools/filter_index_privacy.py",
+    "tests/test_privacy_guard.py",
 }
 
 

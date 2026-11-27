@@ -22,7 +22,8 @@ SKIP_SUFFIXES = {".db", ".db-wal", ".db-shm", ".pyc", ".exe", ".dll", ".png", ".
 # and fake samples, never captured private content; scrubbing them would break logic.
 SKIP_PATHS = {
     "tools/privacy.py", "tools/scrub_evidence.py", "tools/privacy_scan.py",
-    "tools/filter_index_privacy.py", "tests/test_privacy_guard.py",
+    "tools/privacy_scan_remote.py", "tools/filter_index_privacy.py",
+    "tests/test_privacy_guard.py",
 }
 
 
