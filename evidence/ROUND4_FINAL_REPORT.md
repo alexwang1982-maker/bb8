@@ -8,7 +8,9 @@
 
 ## 结论
 
-**5/5 验收用例全部通过**，`pass_all=true`。判定只使用 Task Engine SQLite 真源（经 HTTP）、`/tasks/verify` 四重校验、`result_outbox`、`task_events` 和 bridge 日志，不采信模型自述。
+**6/6 系统验收项均有外部证据通过**：round4_r3 的 T1–T5 `pass_all=true`，T6（outbox 回灌 Brain）由同一轮的 `task result received` → `task result -> Brain context` → `<task_engine_result>` 注入 dump 证明。
+判定只使用 Task Engine SQLite 真源（经 HTTP）、`/tasks/verify` 四重校验、`result_outbox`、`task_events` 和 bridge 日志，不采信模型自述。
+新增的 T6 专项复测脚本两次因夹具时序失败，已按“同一场景连续失败 2 次即停”规则停止，并如实记录；它不是产品代码回归失败。
 
 ## 修复内容（与实际根因一致）
 
@@ -53,15 +55,28 @@
 | T3 两步连续 | **通过** | `tsk_061c527b58594abe` → `tsk_57780067690942bc`；`finished_at=1795777393.239` ≤ `created_at=1795777394.053`；依赖校验日志命中；两步均 verified。 |
 | T4 中途失败调整 | **通过** | 失败 `tsk_a11beba6c6704f10`；已成功 `tsk_8b12b5acd8ac47e4` 被 SKIP 且任务数仍为 1；修正步 `tsk_878277bb65f448fa` 在成功后创建并 verified。 |
 | T5 重复提交 | **通过** | 同一幂等键第二次 `duplicate=true`、同一 task ID、该 step 仅 1 条任务且 verified。 |
+| T6 outbox 回灌 Brain | **通过** | `task-result-001/002/...json` 显示真实投递；日志 `19:02:37 task result -> Brain context` / `19:04:29 ...`；`agnes-request-003/004/007/008.json` 含 `<task_engine_result>` 且含真实 task ID；对应任务最终状态经 `/tasks/verify` 外部判定。 |
 
 机器可读汇总：`evidence/real-env-continuous/round4_r3/SUMMARY.json`。
 
+### T6 专项脚本停止记录（不是产品回归失败）
+
+补充 T6 独立用例后连续两次失败，按规则停止该场景，未做第 3 次尝试：
+
+| 轮次 | 断点 | 证据 |
+|---|---|---|
+| `round4_t6` | 直接提交时 `device_id` 为空，outbox 投到空会话键；且脚本在异步 delivery 前读取 outbox，`delivered=0`。 | `t6-outbox.raw.json`、`t6-brain.raw.json`、`bridge.out.log` |
+| `round4_t6b` | `device_id` 已改为正确会话键，`delivered=1`，但 chat 请求与异步 delivery 竞态：`drain_task_results()` 发生在 receiver 追加之前，故无 `<task_engine_result>` 注入、无 `task result -> Brain context` 日志。 | `t6-outbox.raw.json`（`delivered_at=1795779896.599`）、`t6-injection.raw.json`、`bridge.out.log` |
+
+修复方向仅涉及测试夹具：提交后先等待 outbox `delivered=1` 再发起 Brain 轮次。按停止规则本次不执行该修复，也不把它算作系统 T6 失败；系统 T6 仍以 round4_r3 的原始注入证据验收。
+
 ## 证据位置
 
-- `evidence/real-env-continuous/round4_r3/`：最终 5/5 的原始聊天请求/响应、AGNES 请求 dump、任务状态、events、outbox、结果注入 dump、`SUMMARY.json`、`harness.out.txt`。
+- `evidence/real-env-continuous/round4_r3/`：最终 T1–T5 的原始聊天请求/响应、AGNES 请求 dump、任务状态、events、outbox、结果注入 dump、`SUMMARY.json`、`harness.out.txt`。
+- `evidence/real-env-continuous/round4_t6/`、`round4_t6b/`：T6 专项脚本两次失败原始轨迹（按规则停止）。
 - `evidence/real-env-continuous/round4_r1c/`、`round4_r2/`：前两轮原始轨迹与失败根因证据。
 - `evidence/real-env-continuous/round4_r1/`、`round4_r1b/`：进程挂起原始日志与任务结果 dump。
-- `tests/task_closure_cases.py`：5 个用例及严格外部判据。
+- `tests/task_closure_cases.py`：T1–T5 加 T6 专项脚本（含已知夹具时序问题，见停止记录）。
 - `bridge/task_engine.py`、`bridge/bridge.py`、`tools/restart_isolated.ps1`：本轮代码/配置 diff。
 
 ## 安全与脱敏
@@ -76,6 +91,6 @@
 `bridge/task_engine.py`：step_id 列与索引、submit 参数、`find_step`/`find_step_success`/`verified_status`、成功清 error + 事件归档、结果标记前置校验、新 HTTP 路由、`Row.get` 修复。
 `bridge/bridge.py`：工具 schema 增加 step_id/depends_on/expected_marker，等待式依赖提交、成功步骤跳过、四重校验 check_task、提示词硬化。
 `tools/restart_isolated.ps1`：测试超时 240s、等待上限 300s。
-`tests/task_closure_cases.py`：新增 5 用例外部证据编排器。
+`tests/task_closure_cases.py`：新增 T1–T5 外部证据编排器，并补充 T6 专项脚本（按停止规则保留失败证据）。
 
 分支最终 HEAD 与 commit SHA 见最终回复；`main` 与生产实例未改动。

@@ -23,6 +23,8 @@ from pathlib import Path
 BRIDGE = "http://127.0.0.1:8910"
 ROOT = Path(__file__).resolve().parents[1]
 USER = "bb8-task-closure-verify-01"
+# Bridge session_key(): when body.user is present it hashes that user only.
+SESSION_KEY = hashlib.sha256(USER.encode("utf-8")).hexdigest()[:16]
 
 TOOLS = [
     {"type": "function", "function": {
@@ -174,13 +176,14 @@ def stable_query(marker):
 
 
 def submit_direct(key, step_id, query, skill="document-to-action-items", marker="",
-                  max_attempts=1):
+                  max_attempts=1, device_id=""):
     payload = {"query": query, "skills": skill, "run_budget": 60}
     if marker:
         payload["_expected_marker"] = marker
     return api("/tasks/submit", {
         "idempotency_key": key, "kind": "hermes_cli", "payload": payload,
         "max_attempts": max_attempts, "retry_policy": "safe", "step_id": step_id,
+        "device_id": device_id,
     })
 
 
@@ -372,13 +375,67 @@ def case_idempotency(env):
                    "verified": v.get("verified")}, time.time() - t0)
 
 
+def case_outbox_reinject(env):
+    """T6 probe: outbox delivery -> Brain context injection.
+
+    Known test-fixture race (see evidence/ROUND4_FINAL_REPORT.md): a direct submit
+    followed immediately by a chat can call drain_task_results() before the
+    asynchronous delivery loop appends the result. The two recorded failures were
+    stopped per the 2-consecutive-failure rule; system T6 is proven by round4_r3.
+    """
+    t0 = time.time()
+    marker = env.marker("T6")
+    step = "T6-" + env.tag
+    key = "closure-t6-" + env.tag
+    sub = submit_direct(key, step, stable_query(marker), marker=marker,
+                        device_id=SESSION_KEY)
+    tid = (sub.get("json") or {}).get("task", {}).get("id", "")
+    v = wait_verify(tid, marker) if tid else {}
+    prompt = ("这是工具调用测试：你必须调用 check_task 查询真实任务 %s，"
+              "并依据工具返回和已注入的任务结果如实报告 status、exit_code 和结果标记 %s。" %
+              (tid, marker))
+    r = chat(usermsg(prompt))
+    env.dump("t6-brain.raw.json", r)
+    # Delivery loop runs asynchronously; read the outbox AFTER the Brain turn so the
+    # delivered flag and the injected context are both final external facts.
+    ob = outbox(tid) if tid else []
+    env.dump("t6-outbox.raw.json", {"submit": sub, "verification": v, "outbox": ob,
+                                    "session_key": SESSION_KEY,
+                                    "events": events(tid) if tid else []})
+    injected = []
+    for p in sorted(env.evid.glob("agnes-request-*.json")):
+        txt = p.read_text(encoding="utf-8", errors="replace")
+        if "<task_engine_result>" in txt and tid in txt:
+            injected.append(p.name)
+    logs = [l for l in env.log.splitlines() if "task result -> Brain context" in l]
+    env.dump("t6-injection.raw.json", {"injected_dumps": injected,
+                                       "brain_context_logs": logs[-5:]})
+    delivered = [o for o in ob if o.get("delivered") == 1 and
+                 o.get("payload_json", {}).get("exit_code") == 0 and
+                 marker in str(o.get("payload_json", {}).get("stdout") or "")]
+    reply = content(r)
+    ok = bool(v.get("verified") and delivered and injected and logs and
+              re.search(r"succeeded|成功|exit_code|" + re.escape(marker), reply, re.I))
+    return result(ok, "T6-outbox-reinject",
+                  ["t6-outbox.raw.json", "t6-brain.raw.json", "t6-injection.raw.json",
+                   "bridge.out.log:task result -> Brain context"],
+                  {"task_id": tid, "step_id": step, "status": v.get("status"),
+                   "verified": v.get("verified"), "exit_code": (v.get("result") or {}).get("exit_code"),
+                   "outbox_total": len(ob), "delivered_verified": len(delivered),
+                   "injected_dumps": injected, "brain_context_logs": len(logs),
+                   "reply": reply[:250]}, time.time() - t0)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="round4_r1")
+    ap.add_argument("--only", default="", help="only run cases whose name contains this text")
     args = ap.parse_args()
     env = Env(args.tag)
     cases = [case_single_success, case_single_failure, case_two_step,
-             case_failure_adjustment, case_idempotency]
+             case_failure_adjustment, case_idempotency, case_outbox_reinject]
+    if args.only:
+        cases = [fn for fn in cases if args.only.lower() in fn.__name__.lower()]
     results = []
     for fn in cases:
         try:

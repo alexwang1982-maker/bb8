@@ -1,0 +1,31 @@
+{
+  "tag": "round4_t6b",
+  "bridge": "http://127.0.0.1:8910",
+  "results": [
+    {
+      "case": "T6-outbox-reinject",
+      "pass": false,
+      "external_evidence": [
+        "t6-outbox.raw.json",
+        "t6-brain.raw.json",
+        "t6-injection.raw.json",
+        "bridge.out.log:task result -> Brain context"
+      ],
+      "observed": {
+        "task_id": "tsk_f327c97429764527",
+        "step_id": "T6-round4_t6b",
+        "status": "succeeded",
+        "verified": true,
+        "exit_code": 0,
+        "outbox_total": 1,
+        "delivered_verified": 1,
+        "injected_dumps": [],
+        "brain_context_logs": 0,
+        "reply": "任务 tsk_f327c97429764527 状态如实报告：status=succeeded、error 为空、终态校验通过，结果标记 BB8-ROUND4-T6B-T6-OK 已出现，视为完成。"
+      },
+      "elapsed_s": 36.51
+    }
+  ],
+  "pass_all": false,
+  "judgement": "external Task Engine verify + result_outbox + task_events only"
+}
