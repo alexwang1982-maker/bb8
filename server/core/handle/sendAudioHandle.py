@@ -280,39 +280,49 @@ async def _do_send_audio(conn: "ConnectionHandler", opus_packet, flow_control):
 
 
 async def send_tts_message(conn: "ConnectionHandler", state, text=None):
-    """发送 TTS 状态消息"""
-    if text is None and state == "sentence_start":
-        return
-    message = {"type": "tts", "state": state, "session_id": conn.session_id}
-    if text is not None:
-        message["text"] = textUtils.check_emoji(text)
-
-    # TTS播放结束
-    if state == "stop":
-        # 保存当前的 sentence_id，用于后续判断是否是当前轮次
-        current_sentence_id = conn.sentence_id
-        # 播放提示音
-        tts_notify = conn.config.get("enable_stop_tts_notify", False)
-        if tts_notify:
-            stop_tts_notify_voice = conn.config.get(
-                "stop_tts_notify_voice", "config/assets/tts_notify.mp3"
-            )
-            audios = await audio_to_data(stop_tts_notify_voice, is_opus=True)
-            await sendAudio(conn, audios)
-        # 等待所有音频包发送完成
-        await _wait_for_audio_completion(conn)
-
-        # 检查是否是当前轮次
-        if current_sentence_id != conn.sentence_id:
+    """发送 TTS 状态消息；stop 的所有退出路径都必须收口播放态。"""
+    playback_token = getattr(conn, "tts_playback_token", None)
+    playback_sentence = getattr(conn, "sentence_id", None)
+    should_clear = state == "stop"
+    try:
+        if text is None and state == "sentence_start":
             return
+        message = {"type": "tts", "state": state, "session_id": conn.session_id}
+        if text is not None:
+            message["text"] = textUtils.check_emoji(text)
 
-        # 停止音频发送循环（仅在流控器已初始化时调用）
-        if hasattr(conn, "audio_rate_controller") and conn.audio_rate_controller:
-            conn.audio_rate_controller.stop_sending()
-        conn.clearSpeakStatus()
+        # TTS播放结束
+        if state == "stop":
+            # 保存当前的 sentence_id，用于后续判断是否是当前轮次
+            current_sentence_id = conn.sentence_id
+            # 播放提示音
+            tts_notify = conn.config.get("enable_stop_tts_notify", False)
+            if tts_notify:
+                stop_tts_notify_voice = conn.config.get(
+                    "stop_tts_notify_voice", "config/assets/tts_notify.mp3"
+                )
+                audios = await audio_to_data(stop_tts_notify_voice, is_opus=True)
+                await sendAudio(conn, audios)
+            # 等待所有音频包发送完成
+            await _wait_for_audio_completion(conn)
 
-    # 发送消息到客户端
-    await conn.websocket.send(json.dumps(message))
+            # 过期轮次的 stop 不能清掉当前轮次的播放态，也不能误开拾音门。
+            if current_sentence_id != conn.sentence_id:
+                return
+
+            # 停止音频发送循环（仅在流控器已初始化时调用）
+            if hasattr(conn, "audio_rate_controller") and conn.audio_rate_controller:
+                conn.audio_rate_controller.stop_sending()
+
+        # 发送消息到客户端
+        await conn.websocket.send(json.dumps(message))
+    finally:
+        if (
+            should_clear
+            and getattr(conn, "tts_playback_token", None) == playback_token
+            and getattr(conn, "sentence_id", None) == playback_sentence
+        ):
+            conn.clearSpeakStatus()
 
 
 async def send_stt_message(conn: "ConnectionHandler", text):
@@ -342,8 +352,9 @@ async def send_stt_message(conn: "ConnectionHandler", text):
         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
     )
     await send_tts_message(conn, "start")
-    # 发送start消息后客户端状态会处于说话中状态，同步服务端状态
-    conn.client_is_speaking = True
+    # 发送 start 后客户端状态会处于说话中；服务端同时记录真实播放窗口并关闭
+    # 正常 ASR 入口，避免自己的 TTS 回授被当成用户指令。
+    conn.begin_tts_playback("tts_start")
 
 
 async def send_display_message(conn: "ConnectionHandler", text):

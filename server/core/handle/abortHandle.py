@@ -11,6 +11,8 @@ async def handleAbortMessage(conn: "ConnectionHandler", reason=""):
     # 设置成打断状态，会自动打断llm、tts任务
     conn.close_after_chat = False
     conn.client_abort = True
+    # 先使旧音频generation失效并复位VAD，再清队列；防止消费线程竞态取到旧帧。
+    conn.reset_audio_states()
     conn.clear_queues()
     # 打断客户端说话状态
     message = {"type": "tts", "state": "stop", "session_id": conn.session_id}

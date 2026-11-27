@@ -1,5 +1,6 @@
 import time
 import json
+import re
 import asyncio
 import io
 import wave
@@ -57,21 +58,46 @@ def _post_voiceprint(url: str, speaker_ids: str, wav: bytes) -> dict:
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
-async def _barge_in_is_owner(conn: "ConnectionHandler", pcm_frame: bytes) -> bool:
-    """累计到 0.6s 再问一次声纹；是主人返回 True。"""
+def _owner_ids_for_barge(conn: "ConnectionHandler") -> list:
+    """barge-in 只认显式 allowlist；没有配置就没有 owner，禁止硬编码兜底。"""
     vp = (conn.config or {}).get("voiceprint", {}) or {}
-    url = vp.get("url")
+    raw = vp.get("barge_in_owner_ids") or vp.get("barge_in_speaker_ids") or []
+    if isinstance(raw, str):
+        raw = [part for part in re.split(r"[,\s]+", raw) if part]
+    ids = []
+    for item in raw:
+        sid = str(item).split(",", 1)[0].strip()
+        if sid and sid not in ids:
+            ids.append(sid)
+    return ids
+
+
+async def _barge_in_is_owner(conn: "ConnectionHandler", pcm_frame: bytes) -> bool:
+    """累计 0.6s 探测声纹；仅在显式 owner ID 命中时才允许打断播放。
+
+    这里只产生“插话”事件，不设置工具授权态；speaker 不进入任何权限判断。
+    """
+    vp = (conn.config or {}).get("voiceprint", {}) or {}
+    if not vp.get("barge_in", False):
+        return False
+    provider = getattr(conn, "voiceprint_provider", None)
+    if not provider or not getattr(provider, "enabled", False):
+        return False
+    owner_ids = _owner_ids_for_barge(conn)
+    if not owner_ids:
+        return False
+    url = vp.get("url") or getattr(provider, "original_url", "")
     if not url:
         return False
+
     buf = getattr(conn, "_barge_buf", b"") + pcm_frame
     if len(buf) < BARGE_BYTES:
         conn._barge_buf = buf
         return False
     chunk, conn._barge_buf = buf[:BARGE_BYTES], b""
 
-    speakers = vp.get("speakers") or []
-    ids = ",".join(str(s).split(",")[0].strip() for s in speakers if s) or "wangjian"
     thr = float(vp.get("similarity_threshold", 0.35))
+    ids = ",".join(owner_ids)
 
     def _probe():
         return _post_voiceprint(url, ids, _wav_bytes(chunk))
@@ -82,41 +108,52 @@ async def _barge_in_is_owner(conn: "ConnectionHandler", pcm_frame: bytes) -> boo
         conn.logger.bind(tag=TAG).debug(f"声纹打断探测失败: {exc}")
         return False
     score = float(data.get("score") or 0.0)
-    sid = data.get("speaker_id")
-    if score >= thr:
-        conn.logger.bind(tag=TAG).info(f"声纹打断命中: {sid} score={score:.3f}")
+    sid = str(data.get("speaker_id") or "").strip()
+    # 必须同时满足：显式 owner allowlist 命中 + 分数达阈值。
+    if sid and sid in owner_ids and score >= thr:
+        conn.logger.bind(tag=TAG).info(f"声纹打断命中 owner id, score={score:.3f}")
         return True
     conn.logger.bind(tag=TAG).debug(f"声纹打断丢弃: score={score:.3f}")
     return False
 
 
-async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame):
+async def handleBargeAudioMessage(conn: "ConnectionHandler", pcm_frame: bytes, generation=None, source="microphone"):
+    """播放态专用入口：只做 barge-in 探测，绝不进入 VAD/ASR/Brain。"""
+    if generation is not None and not conn.audio_gate.is_current(generation):
+        conn.audio_gate.note_stale()
+        return
+    if not conn.is_tts_playback_active():
+        return
+    if conn.client_listen_mode == "manual":
+        # 手动拾音模式由显式 listen start 打开正常入口，不做自动声纹打断。
+        return
+    now = time.time()
+    last_hit = getattr(conn, "_barge_last_hit", 0) or 0
+    if (now - last_hit) <= 2.0:
+        return
+    if not await _barge_in_is_owner(conn, pcm_frame):
+        return
+    conn._barge_last_hit = now
+    conn._barge_buf = b""
+    # 先授权新的拾音窗口，再发 abort；abort 会清旧队列并关闭播放态。
+    conn.authorize_user_audio_window("voiceprint_barge_in")
+    await handleAbortMessage(conn, "barge_in")
+
+
+async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame, generation=None, source="microphone"):
+    # reset/abort 前已入队的帧必须在这里再次校验，防止并发竞态漏网。
+    if generation is not None and not conn.audio_gate.is_current(generation):
+        conn.audio_gate.note_stale()
+        return
+    # 能走到这里的帧已经通过来源门控；播放态帧不会进入本函数。
+    if conn.is_tts_playback_active():
+        return
+    conn.current_audio_generation = generation
+
     # 不在说话状态就清掉打断探测的缓存
     if not conn.client_is_speaking:
         conn._barge_buf = b""
         conn._barge_last_hit = 0
-
-    # 声纹打断：说话中，只认主人。
-    # 用"上次命中时间"节流，不用一次性闭锁——闭锁在连续说话时会一直卡住，
-    # 实测背诗那次就是被前两次命中锁死，导致后面完全打不断。
-    now = time.time()
-    last_hit = getattr(conn, "_barge_last_hit", 0) or 0
-    if (
-        conn.client_is_speaking
-        and conn.client_listen_mode != "manual"
-        and not conn.client_aec
-        and (conn.config or {}).get("voiceprint", {}).get("barge_in", False)
-        and (now - last_hit) > 2.0
-    ):
-        if await _barge_in_is_owner(conn, pcm_frame):
-            conn._barge_last_hit = now
-            conn._barge_buf = b""
-            # 清掉已经攒进 ASR 的"机器人自己的声音"，否则打断后会拿它当用户输入
-            try:
-                conn.reset_audio_states()
-            except Exception:
-                pass
-            await handleAbortMessage(conn, "barge_in")
 
     # 当前片段是否有人说话
     have_voice = conn.vad.is_vad(conn, pcm_frame)
@@ -143,7 +180,13 @@ async def resume_vad_detection(conn: "ConnectionHandler"):
     conn.just_woken_up = False
 
 
-async def startToChat(conn: "ConnectionHandler", text):
+async def startToChat(conn: "ConnectionHandler", text, source_generation=None):
+    # 打断/重置后，来自旧音频generation的识别结果不得进入 Brain/工具链。
+    if source_generation is not None and not conn.audio_gate.is_current(source_generation):
+        conn.audio_gate.note_stale()
+        conn.logger.bind(tag=TAG).info("丢弃旧音频 generation 的识别结果")
+        return
+
     # 检查输入是否是JSON格式（包含说话人信息）
     speaker_name = None
     actual_text = text

@@ -17,7 +17,8 @@ from core.providers.asr.dto.dto import InterfaceType
 from core.handle.receiveAudioHandle import startToChat
 from core.handle.reportHandle import enqueue_asr_report
 from core.utils.util import remove_punctuation_and_length
-from core.handle.receiveAudioHandle import handleAudioMessage
+from core.handle.receiveAudioHandle import handleAudioMessage, handleBargeAudioMessage
+from core.utils.audio_source_gate import unpack_gated_frame
 from typing import Optional, Tuple, List, NamedTuple, TYPE_CHECKING
 
 
@@ -39,23 +40,39 @@ class ASRProviderBase(ABC):
         )
         conn.asr_priority_thread.start()
 
-    # 有序处理ASR音频
+    # 有序处理ASR音频；播放态帧只走 barge-in 队列
     def asr_text_priority_thread(self, conn: "ConnectionHandler"):
         while not conn.stop_event.is_set():
+            # barge-in 队列优先：它只在播放态产生，正常 ASR 队列此时为空。
+            while True:
+                try:
+                    item = conn.barge_audio_queue.get_nowait()
+                except queue.Empty:
+                    break
+                self._dispatch_audio_item(conn, item, barge=True)
+
             try:
-                message = conn.asr_audio_queue.get(timeout=1)
-                future = asyncio.run_coroutine_threadsafe(
-                    handleAudioMessage(conn, message),
-                    conn.loop,
-                )
-                future.result()
+                item = conn.asr_audio_queue.get(timeout=0.2)
             except queue.Empty:
                 continue
-            except Exception as e:
-                logger.bind(tag=TAG).error(
-                    f"处理ASR文本失败: {str(e)}, 类型: {type(e).__name__}, 堆栈: {traceback.format_exc()}"
-                )
-                continue
+            self._dispatch_audio_item(conn, item, barge=False)
+
+    def _dispatch_audio_item(self, conn: "ConnectionHandler", item, barge: bool):
+        generation, frame, source = unpack_gated_frame(item)
+        if not conn.audio_gate.is_current(generation):
+            conn.audio_gate.note_stale()
+            return
+        handler = handleBargeAudioMessage if barge else handleAudioMessage
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                handler(conn, frame, generation=generation, source=source),
+                conn.loop,
+            )
+            future.result()
+        except Exception as e:
+            logger.bind(tag=TAG).error(
+                f"处理音频帧失败: {str(e)}, 类型: {type(e).__name__}, 堆栈: {traceback.format_exc()}"
+            )
 
     # 接收音频
     async def receive_audio(self, conn: "ConnectionHandler", pcm_frame, audio_have_voice):
@@ -82,7 +99,11 @@ class ASRProviderBase(ABC):
 
     # 处理语音停止
     async def handle_voice_stop(self, conn: "ConnectionHandler", asr_audio_task: List[bytes]):
-        """并行处理ASR和声纹识别"""
+        """并行处理ASR和声纹识别；旧 generation 的结果直接丢弃。"""
+        generation = getattr(conn, "current_audio_generation", None)
+        if not conn.audio_gate.is_current(generation):
+            conn.audio_gate.note_stale()
+            return
         try:
             total_start_time = time.monotonic()
 
@@ -125,8 +146,10 @@ class ASRProviderBase(ABC):
             else:
                 speaker_name = voiceprint_result
 
-            # 声纹自动注册：用户说「我是王坚」「记住我的声音」时，用这段音频注册
-            # 用设备麦克风的音频注册，识别时也是同一麦克风，准确率最高
+            # 声纹自动注册：用户说身份类短语时注册。旧 generation 的音频不得覆盖声纹库。
+            if not conn.audio_gate.is_current(generation):
+                conn.audio_gate.note_stale()
+                return
             if wav_data and conn.voiceprint_provider:
                 try:
                     et = raw_text if isinstance(raw_text, str) else (
@@ -181,11 +204,16 @@ class ASRProviderBase(ABC):
             text_len, _ = remove_punctuation_and_length(content_for_length_check)
             self.stop_ws_connection()
 
+            # ASR 期间若发生 barge-in/reset，识别结果不得进入 Brain/工具链。
+            if not conn.audio_gate.is_current(generation):
+                conn.audio_gate.note_stale()
+                return
+
             if text_len > 0:
                 audio_snapshot = asr_audio_task.copy()
                 enqueue_asr_report(conn, enhanced_text, audio_snapshot)
                 # 使用自定义模块进行上报
-                await startToChat(conn, enhanced_text)
+                await startToChat(conn, enhanced_text, source_generation=generation)
         except Exception as e:
             logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
             import traceback

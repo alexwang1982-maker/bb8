@@ -1,0 +1,44 @@
+﻿python.exe : G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmp
+eg or avconv - defaulting to ffmpeg, but may not work
+所在位置 行:3 字符: 1
++ & $py -B -m unittest tests.test_bb8_voice_safety_r1 -v 2>&1 | Out-Fil ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (G:\openmuse\xia...ut may not work:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+test_mqtt_aec_false_does_not_apply_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_false_does_no
+t_apply_aec) ... ok
+test_mqtt_aec_true_with_valid_timestamp_applies_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_
+true_with_valid_timestamp_applies_aec) ... ok
+test_mqtt_audio_is_also_barge_gated_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_audi
+o_is_also_barge_gated_during_playback) ... ok
+test_websocket_entry_gates_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_websocket_entry_ga
+tes_during_playback) ... ok
+test_normal_audio_flows_when_not_playing (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_normal_audio_flows_wh
+en_not_playing) ... ok
+test_playback_frames_go_only_to_barge_queue (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_playback_frames_go
+_only_to_barge_queue) ... ok
+test_receive_audio_handle_is_not_called_for_barge_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_recei
+ve_audio_handle_is_not_called_for_barge_frames) ... ok
+test_reset_drains_queues_and_invalidates_old_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_reset_drai
+ns_queues_and_invalidates_old_frames) ... ok
+test_stale_frames_are_not_dispatched (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_stale_frames_are_not_disp
+atched) ... ok
+test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_
+stale_sentence_stop_does_not_clear_current_playback) ... ok
+test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clear
+s_speaking_even_when_send_fails) ... ok
+test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.t
+est_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
+test_three_capabilities_stay_separate (tests.test_bb8_voice_safety_r1.TestVisionRouting.test_three_capabilities_stay_se
+parate) ... ok
+[22:59:40] [bridge] vision_look skip: tool/vision continuation
+[22:59:40] [bridge] vision_look dedup skip
+test_vision_continuation_and_dedup (tests.test_bb8_voice_safety_r1.TestVisionRouting.test_vision_continuation_and_dedup
+) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.501s
+
+OK

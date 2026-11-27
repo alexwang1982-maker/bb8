@@ -43,6 +43,7 @@ from config.logger import setup_logging, build_module_string, create_connection_
 from config.manage_api_client import DeviceNotFoundException, DeviceBindException, generate_and_save_chat_title
 from core.utils.prompt_manager import PromptManager
 from core.utils.voiceprint_provider import VoiceprintProvider
+from core.utils.audio_source_gate import AudioSourceGate
 from core.utils.util import get_system_error_response
 from core.utils import textUtils
 
@@ -163,7 +164,12 @@ class ConnectionHandler:
         # 因为实际部署时可能会用到公共的本地ASR，不能把变量暴露给公共ASR
         # 所以涉及到ASR的变量，需要在这里定义，属于connection的私有变量
         self.asr_audio = []  # 存储PCM帧列表，供VAD和ASR共享
-        self.asr_audio_queue = queue.Queue()
+        # 播放态下麦克风帧只能进 barge-in 队列，不能进正常 ASR 队列。
+        # generation 用于让 reset/abort 前已入队的旧帧在消费侧失效。
+        self.audio_gate = AudioSourceGate()
+        self.asr_audio_queue = self.audio_gate.normal_queue
+        self.barge_audio_queue = self.audio_gate.barge_queue
+        self.current_audio_generation = None
         self.current_speaker = None  # 存储当前说话人
         self.introduced_speakers = set()  # 已"首次引入"的说话人，控制只在首轮带名字
         self.system_introduced_speakers = set()  # 已在 system 注入过身份的说话人，控制 system 身份只首轮出现
@@ -173,6 +179,12 @@ class ConnectionHandler:
 
         # tts相关变量
         self.sentence_id = None
+        # 真实播放态：client_is_speaking 是对客户端的状态同步，playback_active
+        # 是本进程确认已进入 TTS 的状态；二者同时成立才关闭正常 ASR 入口。
+        self.tts_playback_active = False
+        self.tts_playback_token = None
+        self.tts_playback_started_at = 0.0
+        self._tts_watchdog_task = None
         # 处理TTS响应没有文本返回
         self.tts_MessageText = ""
 
@@ -398,10 +410,11 @@ class ConnectionHandler:
                 if handled:
                     return
 
-            # 入口处直接解码PCM，避免VAD和ASR重复解码
+            # 入口处直接解码PCM，避免VAD和ASR重复解码。
+            # 播放态下由 audio_gate 决定只进 barge-in 队列，绝不直接进 ASR。
             pcm_frame = self._decode_opus_packet(message)
             if pcm_frame:
-                self.asr_audio_queue.put(pcm_frame)
+                self.enqueue_microphone_audio(pcm_frame, source="websocket")
 
     async def _process_mqtt_audio_message(self, message):
         """
@@ -427,13 +440,71 @@ class ConnectionHandler:
             if timestamp > 0 and self.client_aec:
                 pcm_frame = self._apply_aec(timestamp, pcm_frame)
 
-            self.asr_audio_queue.put(pcm_frame)
+            # 与 WebSocket 路径共用同一套来源门控：即使 AEC 可用，播放期间
+            # 也只允许 barge-in 路径处理，不允许 TTS 自声进入正常 ASR。
+            self.enqueue_microphone_audio(pcm_frame, source="mqtt_gateway")
             return True
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"解析WebSocket音频包失败: {e}")
 
         # 处理失败，返回False表示需要继续处理
         return False
+
+    # ---------------- 音频来源门控（P0）----------------
+
+    def enqueue_microphone_audio(self, pcm_frame: bytes, source: str = "microphone"):
+        """所有传输路径统一的音频入口。
+
+        播放态下帧进入 barge_audio_queue，只供 barge-in 探测使用；正常 ASR
+        队列不增长。generation 同时写入帧，消费侧可丢弃 reset 前的旧帧。
+        """
+        return self.audio_gate.put(pcm_frame, source=source)
+
+    def is_tts_playback_active(self) -> bool:
+        """确认当前确实处于服务端发起的 TTS 播放窗口。"""
+        return bool(
+            self.client_is_speaking
+            and self.tts_playback_active
+            and self.tts_playback_token is not None
+        )
+
+    def begin_tts_playback(self, reason: str = "tts_start") -> str:
+        """进入 TTS 播放窗口：关闭正常 ASR 入口并标记真实播放态。"""
+        token = uuid.uuid4().hex
+        self.tts_playback_token = token
+        self.tts_playback_started_at = time.time()
+        self.tts_playback_active = True
+        self.client_is_speaking = True
+        self.audio_gate.suppress(reason)
+        self.logger.bind(tag=TAG).debug(f"TTS playback gate closed: {reason}")
+        self._start_tts_watchdog(token)
+        return token
+
+    def authorize_user_audio_window(self, reason: str) -> None:
+        """显式可信拾音事件（本地唤醒词/按键/声纹 barge-in）打开正常 ASR 入口。"""
+        self.audio_gate.open(reason)
+        self.logger.bind(tag=TAG).info(f"User audio window authorized: {reason}")
+
+    async def _tts_playback_watchdog(self, token: str) -> None:
+        """兜底：异常/取消导致 stop 丢失时，不允许播放态永久关闭拾音。"""
+        timeout = float(self.config.get("tts_playback_timeout_seconds", 300))
+        try:
+            await asyncio.sleep(max(30.0, timeout))
+            if self.tts_playback_token == token and self.tts_playback_active:
+                self.logger.bind(tag=TAG).warning("TTS playback watchdog cleared stale speaking state")
+                self.clearSpeakStatus()
+        except asyncio.CancelledError:
+            pass
+
+    def _start_tts_watchdog(self, token: str) -> None:
+        old = getattr(self, "_tts_watchdog_task", None)
+        if old and not old.done():
+            old.cancel()
+        loop = getattr(self, "loop", None)
+        if loop and loop.is_running():
+            self._tts_watchdog_task = asyncio.run_coroutine_threadsafe(
+                self._tts_playback_watchdog(token), loop
+            )
 
     def _apply_aec(self, timestamp: int, pcm_frame: bytes) -> bytes:
         """应用AEC处理 - 综合算法：互相关延迟估计 + Wiener滤波 + 频谱减法"""
@@ -1558,8 +1629,17 @@ class ConnectionHandler:
             self.report_queue.task_done()
 
     def clearSpeakStatus(self):
+        """所有播放结束路径统一收口：清播放态、清残留音频、恢复可信拾音。"""
         self.client_is_speaking = False
-        self.logger.bind(tag=TAG).debug(f"清除服务端讲话状态")
+        self.tts_playback_active = False
+        self.tts_playback_token = None
+        self.tts_playback_started_at = 0.0
+        old = getattr(self, "_tts_watchdog_task", None)
+        if old and not old.done():
+            old.cancel()
+        self._tts_watchdog_task = None
+        self.audio_gate.open("tts_stop")
+        self.logger.bind(tag=TAG).debug("清除服务端讲话状态，音频入口已恢复")
 
     async def close(self, ws=None):
         """资源清理方法"""
@@ -1698,7 +1778,7 @@ class ConnectionHandler:
                 self.stop_event.set()
 
     def clear_queues(self):
-        """清空所有任务队列"""
+        """清空所有任务队列，包括 ASR 与 barge-in 队列。"""
         if self.tts:
             self.logger.bind(tag=TAG).debug(
                 f"开始清理: TTS队列大小={self.tts.tts_text_queue.qsize()}, 音频队列大小={self.tts.tts_audio_queue.qsize()}"
@@ -1727,10 +1807,18 @@ class ConnectionHandler:
                 f"清理结束: TTS队列大小={self.tts.tts_text_queue.qsize()}, 音频队列大小={self.tts.tts_audio_queue.qsize()}"
             )
 
+        # 与 TTS 队列无关，也必须清：旧麦克风帧不能再进入 ASR/Brain/工具链。
+        self.audio_gate.drain_all()
+        self.asr_audio.clear()
+        self.current_audio_generation = None
+
     def reset_audio_states(self):
         """
-        重置所有音频相关状态(VAD + ASR)
+        重置所有音频相关状态(VAD + ASR)，并使已入队旧帧失效。
         """
+        # generation + drain 必须在同一把锁内完成，避免消费线程刚好取到旧帧。
+        self.audio_gate.rotate("audio_reset")
+
         # Reset VAD states
         self.client_audio_buffer.clear()
         self.client_have_voice = False
@@ -1738,9 +1826,16 @@ class ConnectionHandler:
         self.client_voice_window.clear()
         self.last_is_voice = False
         self.vad_last_voice_time = 0.0
+        for attr in ("_vad_state", "_vad_context"):
+            state = getattr(self, attr, None)
+            if state is not None and hasattr(state, "fill"):
+                state.fill(0)
 
         # Clear ASR buffers
         self.asr_audio.clear()
+        self._barge_buf = b""
+        self._barge_last_hit = 0
+        self.current_audio_generation = None
 
         self.logger.bind(tag=TAG).debug("All audio states reset.")
 

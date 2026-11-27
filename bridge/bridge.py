@@ -59,6 +59,9 @@ _last_robot = {}
 # 2026-11-23：local_fast 快通道去重。相同(工具,参数)在 3 秒内只发一次，
 # 治"连喊左转每秒转一次、连转4-5次"（bridge.log 17:24/17:27/17:28）。
 _fast_tool_seen = {}   # (tool_name, args_json) -> 上次发射时间戳
+# P1 视觉快通道去重：同一会话同一问题 3 秒内只抓一次图。
+_vision_recent = {}    # key -> (signature, timestamp)
+VISION_DEDUP_SECS = 3.0
 # 2026-11-22 兜底状态机：喊"启动助手模式"后，这个 key 的话一律强制转电脑助手。
 _ASSISTANT_MODE = {}   # key -> 到期时间戳
 ASSISTANT_MODE_TTL = float(os.environ.get("OPENMUSE_ASSISTANT_TTL", "300"))
@@ -1232,6 +1235,43 @@ def vision_request(text):
     return t if any(w in t for w in VISION_TRIGGERS) else None
 
 
+def is_vision_continuation(messages):
+    """Brain 已经收到视觉观察后的回灌轮，不再重复抓图。"""
+    if not messages:
+        return False
+    last_user = -1
+    for i, m in enumerate(messages):
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user = i
+    for m in messages[last_user + 1:]:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "system" and "<vision_observation>" in str(m.get("content") or ""):
+            return True
+        if m.get("role") == "tool" and "vision_observation" in str(m.get("content") or ""):
+            return True
+    return False
+
+
+def vision_request_allowed(text, messages=None, key=""):
+    """视觉快通道入口门控：回灌轮跳过；相同问题 3 秒内不重复抓图。"""
+    vq = vision_request(text)
+    if not vq:
+        return None
+    if is_vision_continuation(messages or []):
+        print("[bridge] vision_look skip: tool/vision continuation", flush=True)
+        return None
+    signature = (str(key or ""), "".join(vq.lower().split()))
+    now = time.time()
+    with _lock:
+        last_sig, last_ts = _vision_recent.get(key, ("", 0.0))
+        if last_sig == signature and (now - last_ts) < VISION_DEDUP_SECS:
+            print("[bridge] vision_look dedup skip", flush=True)
+            return None
+        _vision_recent[key] = (signature, now)
+    return vq
+
+
 def vision_observe(question):
     """调用现有视觉链路，返回 (ok, observation)。
 
@@ -1644,7 +1684,7 @@ class Handler(BaseHTTPRequestHandler):
         # 视觉：抓图识别成功后，观察进入 Brain 上下文，由 AGNES/OpenMuse 结合问题回答；
         # 不再把 VLM 的单帧结果直接当最终答案播出。失败仍走固定短句，绝不伪造观察。
         vision_context = ""
-        vq = vision_request(user_text)
+        vq = vision_request_allowed(user_text, messages, key)
         if vq:
             print("[bridge] vision_look -> %r" % vq, flush=True)
             ok, observation = vision_observe(vq)

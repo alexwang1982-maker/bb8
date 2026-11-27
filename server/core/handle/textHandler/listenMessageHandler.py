@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 from core.utils.dialogue import Message
 from core.providers.asr.dto.dto import InterfaceType
 from core.handle.receiveAudioHandle import startToChat
+from core.handle.abortHandle import handleAbortMessage
 from core.handle.reportHandle import enqueue_asr_report
 from core.handle.sendAudioHandle import send_stt_message, send_tts_message
 from core.handle.textMessageHandler import TextMessageHandler
@@ -33,7 +34,10 @@ class ListenTextMessageHandler(TextMessageHandler):
                 f"客户端拾音模式：{conn.client_listen_mode}"
             )
         if msg_json["state"] == "start":
-            # 设备从播放模式切回录音模式,清除所有音频状态和缓冲区
+            # 设备显式从播放切回录音：这是可信拾音事件，先打断旧播报再开入口。
+            if conn.is_tts_playback_active():
+                await handleAbortMessage(conn, "listen_start")
+            conn.authorize_user_audio_window("listen_start")
             conn.reset_audio_states()
         elif msg_json["state"] == "stop":
             # 收到stop但asr未初始化，跳过处理
@@ -53,6 +57,11 @@ class ListenTextMessageHandler(TextMessageHandler):
                     if len(asr_audio_task) > 0:
                         await conn.asr.handle_voice_stop(conn, asr_audio_task)
         elif msg_json["state"] == "detect":
+            # 设备本地唤醒词/按键识别是显式可信拾音事件。播放中收到它必须
+            # 立即打断旧 TTS，并为后续真实用户语音打开正常 ASR 入口。
+            if conn.is_tts_playback_active():
+                await handleAbortMessage(conn, "wake_word")
+            conn.authorize_user_audio_window("listen_detect")
             conn.client_have_voice = False
             conn.reset_audio_states()
             if "text" in msg_json:
@@ -115,7 +124,7 @@ class ListenTextMessageHandler(TextMessageHandler):
                     # 如果是唤醒词，且关闭了唤醒词回复，就不用回答
                     await send_stt_message(conn, original_text)
                     await send_tts_message(conn, "stop", None)
-                    conn.client_is_speaking = False
+                    conn.clearSpeakStatus()
                 elif is_wakeup_words:
                     conn.just_woken_up = True
                     # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
