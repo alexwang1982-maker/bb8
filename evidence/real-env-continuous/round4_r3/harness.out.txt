@@ -1,0 +1,6 @@
+[PASS] T1-single-success {"task_id": "tsk_f454a229519b4915", "status": "succeeded", "verified": true, "exit_code": 0, "error": null, "log_hits": 1, "reply": "宸叉彁浜わ細\n- task_id: tsk_f454a229519b4915\n- status: queued"}
+[PASS] T2-single-failure {"task_id": "tsk_c1f365084dc94935", "status": "failed", "verified": false, "error": {"exit_code": 1, "stderr": "", "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\
+[PASS] T3-two-step-sequence {"first_task": "tsk_061c527b58594abe", "second_task": "tsk_57780067690942bc", "first_finished_at": 1795777393.2393568, "second_created_at": 1795777394.0531194, "ordered": true, "dependency_log_hits": 1, "first_verified":
+[PASS] T4-failure-adjustment {"failed_task": "tsk_a11beba6c6704f10", "failed_status": "failed", "successful_task": "tsk_8b12b5acd8ac47e4", "successful_task_count": 1, "skip_log_hits": 1, "adjusted_task": "tsk_878277bb65f448fa", "adjusted_verified": 
+[PASS] T5-idempotency {"task_id": "tsk_64c912d3d1d04103", "duplicate": true, "tasks_for_step": 1, "verified": true}
+SUMMARY pass_all=True 5/5

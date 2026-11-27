@@ -1,0 +1,177 @@
+{
+  "submit": {
+    "status": 202,
+    "elapsed_s": 0.043,
+    "raw": "{\"task\": {\"id\": \"tsk_d8d972244a6d4fd0\", \"idempotency_key\": \"closure-adj-bad-round4_r1c\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"real skill failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_device_id\": \"\", \"_step_id\": \"ADJ-BAD-round4_r1c\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795776790.740337, \"created_at\": 1795776790.740337, \"updated_at\": 1795776790.740337, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"ADJ-BAD-round4_r1c\"}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_d8d972244a6d4fd0",
+        "idempotency_key": "closure-adj-bad-round4_r1c",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "real skill failure",
+          "skills": "__definitely_not_a_real_skill__",
+          "run_budget": 60,
+          "_device_id": "",
+          "_step_id": "ADJ-BAD-round4_r1c"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795776790.740337,
+        "created_at": 1795776790.740337,
+        "updated_at": 1795776790.740337,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null,
+        "step_id": "ADJ-BAD-round4_r1c"
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "verification": {
+    "task_id": "tsk_d8d972244a6d4fd0",
+    "step_id": "ADJ-BAD-round4_r1c",
+    "status": "failed",
+    "terminal": true,
+    "verified": false,
+    "reason": "status=failed;error_not_empty;exit_code_not_zero",
+    "error": {
+      "exit_code": 1,
+      "stderr": "",
+      "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+      "stdout_bytes": 118,
+      "stderr_bytes": 0,
+      "output_truncated": false
+    },
+    "result": null,
+    "attempt": 1,
+    "created_at": 1795776790.740337,
+    "finished_at": 1795776798.784419,
+    "attempt_history": [
+      {
+        "type": "failed",
+        "ts": 1795776798.784419,
+        "detail": {
+          "attempt": 1,
+          "exit_code": 1,
+          "safe": true,
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+            "stdout_bytes": 118,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          }
+        }
+      }
+    ]
+  },
+  "outbox": [
+    {
+      "delivery_id": "tsk_d8d972244a6d4fd0:g1",
+      "task_id": "tsk_d8d972244a6d4fd0",
+      "device_id": "",
+      "payload_json": {
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        },
+        "exit_code": 1,
+        "unknown_side_effects": false
+      },
+      "delivered": 1,
+      "attempts": 0,
+      "next_attempt_at": 0.0,
+      "last_error": null,
+      "dead_letter": 0,
+      "created_at": 1795776798.784419,
+      "delivered_at": 1795776799.2754588
+    }
+  ],
+  "events": [
+    {
+      "type": "result_delivered",
+      "ts": 1795776799.3081512,
+      "detail_json": {
+        "delivery_id": "tsk_d8d972244a6d4fd0:g1"
+      }
+    },
+    {
+      "type": "failed",
+      "ts": 1795776798.784419,
+      "detail_json": {
+        "attempt": 1,
+        "exit_code": 1,
+        "safe": true,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        }
+      }
+    },
+    {
+      "type": "claimed",
+      "ts": 1795776790.80719,
+      "detail_json": {
+        "pid": 11676,
+        "generation": 1
+      }
+    },
+    {
+      "type": "submitted",
+      "ts": 1795776790.742898,
+      "detail_json": {
+        "kind": "hermes_cli",
+        "device_id": "",
+        "retry_policy": "safe",
+        "step_id": "ADJ-BAD-round4_r1c"
+      }
+    }
+  ],
+  "brain": {
+    "status": 200,
+    "elapsed_s": 10.075,
+    "raw": "{\"id\": \"chatcmpl-528999db0cd3400e970b\", \"object\": \"chat.completion\", \"created\": 1795776809, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"我这边查不到这个任务，也如实报告：\\n\\n- **status**：无记录（该任务 `tsk_d8d972244a6d4fd0` 不在我这边系统，无法查到）\\n- **exit_code**：无法获取\\n\\n如果你能把它所在的系统/bridge 那边的查询结果贴给我，我可以帮你解读；或者告诉我要做什么，我直接在那边做。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+    "json": {
+      "id": "chatcmpl-528999db0cd3400e970b",
+      "object": "chat.completion",
+      "created": 1795776809,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "我这边查不到这个任务，也如实报告：\n\n- **status**：无记录（该任务 `tsk_d8d972244a6d4fd0` 不在我这边系统，无法查到）\n- **exit_code**：无法获取\n\n如果你能把它所在的系统/bridge 那边的查询结果贴给我，我可以帮你解读；或者告诉我要做什么，我直接在那边做。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

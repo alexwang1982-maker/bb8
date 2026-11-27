@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 17.045,
+  "raw": "{\"id\": \"chatcmpl-fc36e54c7afc4bc28bbd\", \"object\": \"chat.completion\", \"created\": 1795776698, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"BB-8 收到，但 `document-to-action-items` 这个技能在我的技能库里不存在（可用的只有 meeting-action-items、weekly-review-planning、obsidian、document-to-action-items 这些里只有后三个能直接跑）。所以这个任务我没法照单提交成可执行步骤。\\n\\n你可以改一下，比如换成：\\n- `meeting-action-items`：整理行动项并带责任人/截止\\n- `weekly-review-planning`：周复盘 + 下周计划\\n- `obsidian`：写到 vault\\n\\n或者你直接说要用哪个，我就用对应技能提交。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-fc36e54c7afc4bc28bbd",
+    "object": "chat.completion",
+    "created": 1795776698,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "BB-8 收到，但 `document-to-action-items` 这个技能在我的技能库里不存在（可用的只有 meeting-action-items、weekly-review-planning、obsidian、document-to-action-items 这些里只有后三个能直接跑）。所以这个任务我没法照单提交成可执行步骤。\n\n你可以改一下，比如换成：\n- `meeting-action-items`：整理行动项并带责任人/截止\n- `weekly-review-planning`：周复盘 + 下周计划\n- `obsidian`：写到 vault\n\n或者你直接说要用哪个，我就用对应技能提交。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

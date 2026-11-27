@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 8.214,
+  "raw": "{\"id\": \"chatcmpl-5ae5f4ad5ef648e1b69c\", \"object\": \"chat.completion\", \"created\": 1795777484, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"再次调用 submit_task 已按要求完成：系统识别该步骤为已成功（step_already_verified_succeeded），已跳过未重复执行，状态 succeeded、已验证通过，任务ID tsk_8b12b5acd8ac47e4。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-5ae5f4ad5ef648e1b69c",
+    "object": "chat.completion",
+    "created": 1795777484,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "再次调用 submit_task 已按要求完成：系统识别该步骤为已成功（step_already_verified_succeeded），已跳过未重复执行，状态 succeeded、已验证通过，任务ID tsk_8b12b5acd8ac47e4。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 5.084,
+  "raw": "{\"id\": \"chatcmpl-46327f40df7a4b558b98\", \"object\": \"chat.completion\", \"created\": 1795777362, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"任务 tsk_c1f365084dc94935 的真实结果：\\n\\n- **status**: failed（终态，校验未通过）\\n- **exit_code**: 1\\n- **错误原因**: `Unknown skill(s): __definitely_not_a_real_skill__` —— 该技能不存在，导致技能解析失败\\n\\n这是一次有意的失败测试，按工具返回如实报告，并非成功。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-46327f40df7a4b558b98",
+    "object": "chat.completion",
+    "created": 1795777362,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "任务 tsk_c1f365084dc94935 的真实结果：\n\n- **status**: failed（终态，校验未通过）\n- **exit_code**: 1\n- **错误原因**: `Unknown skill(s): __definitely_not_a_real_skill__` —— 该技能不存在，导致技能解析失败\n\n这是一次有意的失败测试，按工具返回如实报告，并非成功。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

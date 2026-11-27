@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 11.082,
+  "raw": "{\"id\": \"chatcmpl-291ffc57e760431d9d2e\", \"object\": \"chat.completion\", \"created\": 1795777495, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"已提交修正步骤 ADJ-B2-round4_r3，任务 ID 为 tsk_878277bb65f448fa，当前状态 running，尚未完成。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-291ffc57e760431d9d2e",
+    "object": "chat.completion",
+    "created": 1795777495,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "已提交修正步骤 ADJ-B2-round4_r3，任务 ID 为 tsk_878277bb65f448fa，当前状态 running，尚未完成。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

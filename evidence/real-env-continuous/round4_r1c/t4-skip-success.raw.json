@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 6.833,
+  "raw": "{\"id\": \"chatcmpl-40a82399f0f24e0a8f73\", \"object\": \"chat.completion\", \"created\": 1795776815, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"已识别为已成功步骤并跳过，未重复执行。\\n\\n- step_id：ADJ-A-round4_r1c\\n- task_id：tsk_7bc8ef7a2f344053\\n- status：succeeded，verified=true\\n- 跳过原因：step_already_verified_succeeded\\n- 结果标记 BB8-ROUND4-R1C-ADJ-A-OK 已确认存在\\n\\n无后续动作。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-40a82399f0f24e0a8f73",
+    "object": "chat.completion",
+    "created": 1795776815,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "已识别为已成功步骤并跳过，未重复执行。\n\n- step_id：ADJ-A-round4_r1c\n- task_id：tsk_7bc8ef7a2f344053\n- status：succeeded，verified=true\n- 跳过原因：step_already_verified_succeeded\n- 结果标记 BB8-ROUND4-R1C-ADJ-A-OK 已确认存在\n\n无后续动作。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

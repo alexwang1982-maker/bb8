@@ -1,0 +1,6 @@
+[FAIL] T1-single-success {"task_id": null, "status": null, "verified": null, "exit_code": null, "error": null, "log_hits": 0, "reply": "娌℃湁 submit_task 宸ュ叿鍙敤銆俓n\n鎴戝瀹炶鏄庯細鎴戣繖杈瑰彲鐢ㄧ殑宸ュ叿鍙湁 ask_brain锛堣浆缁?OpenMuse锛夊拰 forward_to_pc锛堣浆缁欑數鑴戝姪鎵嬶級锛屾病鏈?submit_task / check
+[PASS] T2-single-failure {"task_id": "tsk_f0a0afecbe594587", "status": "failed", "verified": false, "error": {"exit_code": 1, "stderr": "", "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\
+[FAIL] T3-two-step-sequence {"first_task": "tsk_d340f1e9adb1445e", "second_task": null, "first_finished_at": 1795777093.4530509, "second_created_at": 0, "ordered": false, "dependency_log_hits": 0, "first_verified": true, "second_verified": null, "r
+[PASS] T4-failure-adjustment {"failed_task": "tsk_d7e0a2fc30b24f27", "failed_status": "failed", "successful_task": "tsk_107450bb1c2e4c83", "successful_task_count": 1, "skip_log_hits": 1, "adjusted_task": "tsk_2648debaa7674b39", "adjusted_verified": 
+[PASS] T5-idempotency {"task_id": "tsk_c50f7ed89bb84972", "duplicate": true, "tasks_for_step": 1, "verified": true}
+SUMMARY pass_all=False 3/5

@@ -1,0 +1,177 @@
+{
+  "submit": {
+    "status": 202,
+    "elapsed_s": 0.054,
+    "raw": "{\"task\": {\"id\": \"tsk_d7e0a2fc30b24f27\", \"idempotency_key\": \"closure-adj-bad-round4_r2\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"real skill failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_device_id\": \"\", \"_step_id\": \"ADJ-BAD-round4_r2\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795777132.6818867, \"created_at\": 1795777132.6818867, \"updated_at\": 1795777132.6818867, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"ADJ-BAD-round4_r2\"}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_d7e0a2fc30b24f27",
+        "idempotency_key": "closure-adj-bad-round4_r2",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "real skill failure",
+          "skills": "__definitely_not_a_real_skill__",
+          "run_budget": 60,
+          "_device_id": "",
+          "_step_id": "ADJ-BAD-round4_r2"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795777132.6818867,
+        "created_at": 1795777132.6818867,
+        "updated_at": 1795777132.6818867,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null,
+        "step_id": "ADJ-BAD-round4_r2"
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "verification": {
+    "task_id": "tsk_d7e0a2fc30b24f27",
+    "step_id": "ADJ-BAD-round4_r2",
+    "status": "failed",
+    "terminal": true,
+    "verified": false,
+    "reason": "status=failed;error_not_empty;exit_code_not_zero",
+    "error": {
+      "exit_code": 1,
+      "stderr": "",
+      "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+      "stdout_bytes": 118,
+      "stderr_bytes": 0,
+      "output_truncated": false
+    },
+    "result": null,
+    "attempt": 1,
+    "created_at": 1795777132.6818867,
+    "finished_at": 1795777141.0055065,
+    "attempt_history": [
+      {
+        "type": "failed",
+        "ts": 1795777141.0055065,
+        "detail": {
+          "attempt": 1,
+          "exit_code": 1,
+          "safe": true,
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+            "stdout_bytes": 118,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          }
+        }
+      }
+    ]
+  },
+  "outbox": [
+    {
+      "delivery_id": "tsk_d7e0a2fc30b24f27:g1",
+      "task_id": "tsk_d7e0a2fc30b24f27",
+      "device_id": "",
+      "payload_json": {
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        },
+        "exit_code": 1,
+        "unknown_side_effects": false
+      },
+      "delivered": 1,
+      "attempts": 0,
+      "next_attempt_at": 0.0,
+      "last_error": null,
+      "dead_letter": 0,
+      "created_at": 1795777141.0055065,
+      "delivered_at": 1795777142.323322
+    }
+  ],
+  "events": [
+    {
+      "type": "result_delivered",
+      "ts": 1795777142.3710248,
+      "detail_json": {
+        "delivery_id": "tsk_d7e0a2fc30b24f27:g1"
+      }
+    },
+    {
+      "type": "failed",
+      "ts": 1795777141.0055065,
+      "detail_json": {
+        "attempt": 1,
+        "exit_code": 1,
+        "safe": true,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        }
+      }
+    },
+    {
+      "type": "claimed",
+      "ts": 1795777133.1895761,
+      "detail_json": {
+        "pid": 8380,
+        "generation": 1
+      }
+    },
+    {
+      "type": "submitted",
+      "ts": 1795777132.6818867,
+      "detail_json": {
+        "kind": "hermes_cli",
+        "device_id": "",
+        "retry_policy": "safe",
+        "step_id": "ADJ-BAD-round4_r2"
+      }
+    }
+  ],
+  "brain": {
+    "status": 200,
+    "elapsed_s": 3.729,
+    "raw": "{\"id\": \"chatcmpl-684902e6a8244e36a4bf\", \"object\": \"chat.completion\", \"created\": 1795777146, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"王总，查到了：\\n\\n- **status: failed**\\n- **exit_code: 1**\\n\\n错误原因：调用了不存在的技能 `__definitely_not_a_real_skill__`，报 `Unknown skill(s)`。任务没有成功。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+    "json": {
+      "id": "chatcmpl-684902e6a8244e36a4bf",
+      "object": "chat.completion",
+      "created": 1795777146,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "王总，查到了：\n\n- **status: failed**\n- **exit_code: 1**\n\n错误原因：调用了不存在的技能 `__definitely_not_a_real_skill__`，报 `Unknown skill(s)`。任务没有成功。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

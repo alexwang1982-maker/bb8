@@ -1,0 +1,6 @@
+[FAIL] T1-single-success {"task_id": null, "status": null, "verified": null, "exit_code": null, "error": null, "log_hits": 0, "reply": "BB-8 鏀跺埌锛屼絾 `document-to-action-items` 杩欎釜鎶€鑳藉湪鎴戠殑鎶€鑳藉簱閲屼笉瀛樺湪锛堝彲鐢ㄧ殑鍙湁 meeting-action-items銆亀eekly-review-planning銆乷bsidia
+[FAIL] T2-single-failure {"task_id": "tsk_a70c98642fd04300", "status": "failed", "verified": false, "error": {"exit_code": 1, "stderr": "", "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\
+[FAIL] T3-two-step-sequence {"first_task": "tsk_724345ca102948a6", "second_task": null, "first_finished_at": 1795776752.2339988, "second_created_at": 0, "ordered": false, "dependency_log_hits": 0, "first_verified": true, "second_verified": null, "r
+[FAIL] T4-failure-adjustment {"failed_task": "tsk_d8d972244a6d4fd0", "failed_status": "failed", "successful_task": "tsk_7bc8ef7a2f344053", "successful_task_count": 1, "skip_log_hits": 0, "adjusted_task": "tsk_89385f407969430d", "adjusted_verified": 
+[PASS] T5-idempotency {"task_id": "tsk_2a8fcf1a083c4e44", "duplicate": true, "tasks_for_step": 1, "verified": true}
+SUMMARY pass_all=False 1/5
