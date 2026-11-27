@@ -1,0 +1,76 @@
+{
+  "first": {
+    "status": 202,
+    "elapsed_s": 0.062,
+    "raw": "{\"task\": {\"id\": \"tsk_582298bbbf2f4a34\", \"idempotency_key\": \"bb8-idem-1795771821\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具\", \"skills\": \"document-to-action-items\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795771821.082849, \"created_at\": 1795771821.082849, \"updated_at\": 1795771821.082849, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_582298bbbf2f4a34",
+        "idempotency_key": "bb8-idem-1795771821",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具",
+          "skills": "document-to-action-items",
+          "run_budget": 20,
+          "_device_id": "bb8-continuous-verify-01"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "never",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795771821.082849,
+        "created_at": 1795771821.082849,
+        "updated_at": 1795771821.082849,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "second": {
+    "status": 202,
+    "elapsed_s": 0.0,
+    "raw": "{\"task\": {\"id\": \"tsk_582298bbbf2f4a34\", \"idempotency_key\": \"bb8-idem-1795771821\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具\", \"skills\": \"document-to-action-items\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795771821.082849, \"created_at\": 1795771821.082849, \"updated_at\": 1795771821.082849, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null}, \"duplicate\": true}",
+    "json": {
+      "task": {
+        "id": "tsk_582298bbbf2f4a34",
+        "idempotency_key": "bb8-idem-1795771821",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具",
+          "skills": "document-to-action-items",
+          "run_budget": 20,
+          "_device_id": "bb8-continuous-verify-01"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "never",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795771821.082849,
+        "created_at": 1795771821.082849,
+        "updated_at": 1795771821.082849,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null
+      },
+      "duplicate": true
+    },
+    "error": null
+  }
+}

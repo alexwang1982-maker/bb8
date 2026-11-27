@@ -1,0 +1,36 @@
+{
+  "status": 200,
+  "elapsed_s": 0.033,
+  "raw": "{\"task\": {\"id\": \"tsk_3d527c85f05a4269\", \"idempotency_key\": \"bb8-fail-adjust-1795770988\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\", \"skills\": \"bb8-nonexistent-skill-zz\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"unknown\", \"attempt\": 1, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 1, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770988.742527, \"created_at\": 1795770988.742527, \"updated_at\": 1795770997.0354426, \"started_at\": 1795770989.2129939, \"finished_at\": 1795770997.0354426, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 164, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}}",
+  "json": {
+    "task": {
+      "id": "tsk_3d527c85f05a4269",
+      "idempotency_key": "bb8-fail-adjust-1795770988",
+      "kind": "hermes_cli",
+      "payload_json": {
+        "query": "读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK",
+        "skills": "bb8-nonexistent-skill-zz",
+        "run_budget": 20,
+        "_device_id": "bb8-continuous-verify-01"
+      },
+      "status": "unknown",
+      "attempt": 1,
+      "max_attempts": 1,
+      "priority": 0,
+      "owner_pid": null,
+      "child_pid": null,
+      "generation": 1,
+      "retry_policy": "never",
+      "lease_until": null,
+      "cancel_requested": 0,
+      "next_run_at": 1795770988.742527,
+      "created_at": 1795770988.742527,
+      "updated_at": 1795770997.0354426,
+      "started_at": 1795770989.2129939,
+      "finished_at": 1795770997.0354426,
+      "result_json": null,
+      "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\r\\n\", \"stdout_bytes\": 164, \"stderr_bytes\": 0, \"output_truncated\": false}"
+    }
+  },
+  "error": null
+}

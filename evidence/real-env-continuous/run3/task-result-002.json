@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_d461ccec34da4f21:g2",
+ "task_id": "tsk_d461ccec34da4f21",
+ "device_id": "8e2b1f506aa0eeed",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: 使用 note-taking 技能写一条备注，内容为：BB8-SKILL-ONE\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): note-taking\r\n",
+   "stdout_bytes": 148,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}

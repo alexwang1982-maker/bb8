@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 12.385,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-3c9b5ea05eac4730a0bc",
+    "object": "chat.completion",
+    "created": 1795770843,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "任务ID：tsk_383fd26502cb44cd，真实状态：running。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_383fd26502cb44cd:g2",
+ "task_id": "tsk_383fd26502cb44cd",
+ "device_id": "8e2b1f506aa0eeed",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: 使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): note-taking\r\n",
+   "stdout_bytes": 169,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}

@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 4.092,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-52b675855d5941379843",
+    "object": "chat.completion",
+    "created": 1795771793,
+    "model": "openmuse",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "我现在看不清，等一下再试"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

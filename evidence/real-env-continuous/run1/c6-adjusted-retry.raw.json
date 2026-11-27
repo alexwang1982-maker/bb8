@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 0.005,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-3f5d524f2e914c9b9393",
+    "object": "chat.completion",
+    "created": 1795769836,
+    "model": "openmuse",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "没听清，再说一遍"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

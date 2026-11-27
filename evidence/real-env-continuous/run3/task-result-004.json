@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_8a714de9966649a7:g1",
+ "task_id": "tsk_8a714de9966649a7",
+ "device_id": "8e2b1f506aa0eeed",
+ "payload": {
+  "error": {
+   "exit_code": -99,
+   "error": "process tree not confirmed dead; result withheld: scan_malformed_line",
+   "stderr": "",
+   "stdout_bytes": 15527,
+   "stderr_bytes": 0,
+   "output_truncated": true
+  },
+  "exit_code": -99,
+  "unknown_side_effects": true
+ }
+}

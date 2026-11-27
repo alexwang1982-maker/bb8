@@ -1,0 +1,12 @@
+{
+ "model": "Qwen/Qwen3-VL-8B-Instruct",
+ "question": "现在看看摄像头前面有什么？只描述画面，不要执行任何动作。",
+ "image_bytes": 6377,
+ "reply": "画面中，摄像头前方是白色的墙壁和天花板，以及一个黑色的悬挂物，看起来像一个吊扇的叶片或灯具。",
+ "elapsed_s": 1.04,
+ "usage": {
+  "prompt_tokens": 129,
+  "completion_tokens": 28,
+  "total_tokens": 157
+ }
+}

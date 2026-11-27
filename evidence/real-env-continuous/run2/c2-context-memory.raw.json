@@ -1,0 +1,160 @@
+{
+  "turn1": {
+    "status": 200,
+    "elapsed_s": 0.0,
+    "raw": "[PRIVATE MEMORY REDACTED]",
+    "json": {
+      "id": "chatcmpl-2238996662084a6a958d",
+      "object": "chat.completion",
+      "created": 1795770355,
+      "model": "openmuse",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "好，记住了。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  },
+  "memory_api": {
+    "status": 200,
+    "elapsed_s": 0.017,
+    "raw": "[PRIVATE MEMORY REDACTED]",
+    "json": [
+      {
+        "id": "m_535658d3",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "digest",
+        "created_at": "2026-11-27T08:57:04+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_5e2cc8ba",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "digest",
+        "created_at": "2026-11-27T08:57:04+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a0b3e51b",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "profile",
+        "created_at": "2026-11-27T08:56:05+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_720fd521",
+        "content": "PRIVATE-ADDRESS-REDACTED",
+        "category": "profile",
+        "created_at": "2026-11-24T07:17:52+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_01bf621b",
+        "content": "不要犯错误",
+        "category": "profile",
+        "created_at": "2026-11-22T02:56:59+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a945ce4d",
+        "content": "下次我下达任务之前你必须要付出给我确认啊防止下达错误",
+        "category": "profile",
+        "created_at": "2026-11-22T02:49:21+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a72b70b4",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "profile",
+        "created_at": "2026-11-21T09:18:09+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_878c8b81",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "general",
+        "created_at": "2026-11-20T14:14:32+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_b01ddb4a",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "profile",
+        "created_at": "2026-11-19T03:40:14+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_ebcf8dee",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "profile",
+        "created_at": "2026-11-19T03:32:24+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_e11548ea",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "general",
+        "created_at": "2026-10-08T03:23:51+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_8655bf71",
+        "content": "[PRIVATE MEMORY REDACTED]",
+        "category": "profile",
+        "created_at": "2026-10-06T13:19:04+00:00",
+        "source": "agent",
+        "updated_at": ""
+      }
+    ],
+    "error": null
+  },
+  "turn2": {
+    "status": 200,
+    "elapsed_s": 2.993,
+    "raw": "[PRIVATE MEMORY REDACTED]",
+    "json": {
+      "id": "chatcmpl-c00fdecc63d64766ab9e",
+      "object": "chat.completion",
+      "created": 1795770358,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "BLUE-LANTERN-77"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "status": 200,
+  "elapsed_s": 0.0,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-6a7a33f7a7e74443824a",
+    "object": "chat.completion",
+    "created": 1795769772,
+    "model": "openmuse",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_60c12b537828",
+              "type": "function",
+              "function": {
+                "name": "self_motor_stop",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

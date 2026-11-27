@@ -1,0 +1,3 @@
+{
+  "tsk_f99aaf230e0e4e91": "{\"events\": [{\"type\": \"claimed\", \"ts\": 1795771716.7216277, \"detail_json\": {\"pid\": 2368, \"generation\": 2}}, {\"type\": \"retry_scheduled\", \"ts\": 1795771714.636455, \"detail_json\": {\"attempt\": 1, \"delay\": 2.0, \"exit_code\": -99}}, {\"type\": \"claimed\", \"ts\": 1795771667.346837, \"detail_json\": {\"pid\": 2368, \"generation\": 1}}, {\"type\": \"submitted\", \"ts\": 1795771656.1057642, \"detail_json\": {\"kind\": \"hermes_cli\", \"device_id\": \"8e2b1f506aa0eeed\", \"retry_policy\": \"safe\"}}]}"
+}

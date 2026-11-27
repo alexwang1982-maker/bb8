@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 19.841,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-78b903a50c24463182da",
+    "object": "chat.completion",
+    "created": 1795770510,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "不行坚哥，note-taking 不在安全技能清单里，我没法拿它提交任务。\n\n我现在能安全做的只有：视觉观察、自检、摄像头、眼睛灯、喇叭、行为切换和聊天。要写标记的话，我可以把“BB8-ADJUSTED-OK”写进聊天里确认，或者你告诉我一个在清单里的安全技能，我再试。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

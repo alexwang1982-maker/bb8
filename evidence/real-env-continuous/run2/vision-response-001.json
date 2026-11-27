@@ -1,0 +1,12 @@
+{
+ "model": "Qwen/Qwen3-VL-8B-Instruct",
+ "question": "先看看摄像头前面有什么，再用 submit_task 把观察记成一个安全的笔记任务，最后一句话回答：看到了什么、任务有没有提交、有没有做任何物理动作。不要驱动电机。",
+ "image_bytes": 6875,
+ "reply": "摄像头前方是白色墙壁的角落，有一个黑色物体悬垂。  \n任务已记为安全笔记。  \n看到了墙壁角落的黑色物体，任务已提交，未做任何物理动作。",
+ "elapsed_s": 1.33,
+ "usage": {
+  "prompt_tokens": 156,
+  "completion_tokens": 40,
+  "total_tokens": 196
+ }
+}

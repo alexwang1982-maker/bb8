@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "elapsed_s": 0.017,
+  "raw": "{\"key\": \"bb8-continuous-verify-01\", \"pending\": [{\"delivery_id\": \"tsk_3d527c85f05a4269:g1\", \"task_id\": \"tsk_3d527c85f05a4269\", \"device_id\": \"bb8-continuous-verify-01\", \"payload\": {\"error\": {\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\r\\n\", \"stdout_bytes\": 164, \"stderr_bytes\": 0, \"output_truncated\": false}, \"exit_code\": 1, \"unknown_side_effects\": true}}]}",
+  "json": {
+    "key": "bb8-continuous-verify-01",
+    "pending": [
+      {
+        "delivery_id": "tsk_3d527c85f05a4269:g1",
+        "task_id": "tsk_3d527c85f05a4269",
+        "device_id": "bb8-continuous-verify-01",
+        "payload": {
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): bb8-nonexistent-skill-zz\r\n",
+            "stdout_bytes": 164,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          },
+          "exit_code": 1,
+          "unknown_side_effects": true
+        }
+      }
+    ]
+  },
+  "error": null
+}

@@ -1,0 +1,36 @@
+{
+  "status": 200,
+  "elapsed_s": 0.005,
+  "raw": "{\"task\": {\"id\": \"tsk_d63a7af14ce54cf1\", \"idempotency_key\": \"bb8-fail-adjust-1795770480\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\", \"skill\": \"bb8-nonexistent-skill-zz\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"unknown\", \"attempt\": 1, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 1, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770480.841513, \"created_at\": 1795770480.841513, \"updated_at\": 1795770487.7412488, \"started_at\": 1795770481.2732127, \"finished_at\": 1795770487.7412488, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\\\r\\\\n\\\\u001b[1;31mprovider 'auto' has no endpoint configured, so the request is not sent anywhere \\\\u001b[0m\\\\r\\\\n\\\\u001b[1;31m(it would otherwise fall back to OpenRouter). Set providers.auto.base_url or \\\\u001b[0m\\\\r\\\\n\\\\u001b[1;31mmodel.base_url in config.yaml.\\\\u001b[0m\\\\r\\\\n\\\\r\\\\nGoodbye! ☤\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 322, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}}",
+  "json": {
+    "task": {
+      "id": "tsk_d63a7af14ce54cf1",
+      "idempotency_key": "bb8-fail-adjust-1795770480",
+      "kind": "hermes_cli",
+      "payload_json": {
+        "query": "读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK",
+        "skill": "bb8-nonexistent-skill-zz",
+        "run_budget": 20,
+        "_device_id": "bb8-continuous-verify-01"
+      },
+      "status": "unknown",
+      "attempt": 1,
+      "max_attempts": 1,
+      "priority": 0,
+      "owner_pid": null,
+      "child_pid": null,
+      "generation": 1,
+      "retry_policy": "never",
+      "lease_until": null,
+      "cancel_requested": 0,
+      "next_run_at": 1795770480.841513,
+      "created_at": 1795770480.841513,
+      "updated_at": 1795770487.7412488,
+      "started_at": 1795770481.2732127,
+      "finished_at": 1795770487.7412488,
+      "result_json": null,
+      "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\r\\n\\u001b[1;31mprovider 'auto' has no endpoint configured, so the request is not sent anywhere \\u001b[0m\\r\\n\\u001b[1;31m(it would otherwise fall back to OpenRouter). Set providers.auto.base_url or \\u001b[0m\\r\\n\\u001b[1;31mmodel.base_url in config.yaml.\\u001b[0m\\r\\n\\r\\nGoodbye! ☤\\r\\n\", \"stdout_bytes\": 322, \"stderr_bytes\": 0, \"output_truncated\": false}"
+    }
+  },
+  "error": null
+}

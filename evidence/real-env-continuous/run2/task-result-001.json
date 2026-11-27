@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_9d804664357f49bd:g2",
+ "task_id": "tsk_9d804664357f49bd",
+ "device_id": "8e2b1f506aa0eeed",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: \r\n用笔记技能把这次摄像头观察记成一条安全笔记：摄像头前方是白色墙壁角落，有一个黑\r\n色物体悬垂，身份未知；仅记录，不驱动任何电机。\r\n\u001b[1;31mprovider 'auto' has no endpoint configured, so the request is not sent anywhere \u001b[0m\r\n\u001b[1;31m(it would otherwise fall back to OpenRouter). Set providers.auto.base_url or \u001b[0m\r\n\u001b[1;31mmodel.base_url in config.yaml.\u001b[0m\r\n\r\nGoodbye! ☤\r\n",
+   "stdout_bytes": 441,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": false
+ }
+}

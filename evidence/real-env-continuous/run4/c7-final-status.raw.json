@@ -1,0 +1,36 @@
+{
+  "status": 200,
+  "elapsed_s": 0.008,
+  "raw": "{\"task\": {\"id\": \"tsk_582298bbbf2f4a34\", \"idempotency_key\": \"bb8-idem-1795771821\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具\", \"skills\": \"document-to-action-items\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"unknown\", \"attempt\": 1, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 1, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795771821.082849, \"created_at\": 1795771821.082849, \"updated_at\": 1795771914.2345836, \"started_at\": 1795771866.832925, \"finished_at\": 1795771914.2345836, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": -99, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\n\\\\u001b[1;38;2;255;191;0mSession 20261127_173110_2675e1 found but has no messages. Starting fresh.\\\\u001b[0m\\\\r\\\\n\\\\u001b[38;2;255;191;0m────────────────────────────────────────\\\\u001b[0m\\\\r\\\\n\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 343, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}}",
+  "json": {
+    "task": {
+      "id": "tsk_582298bbbf2f4a34",
+      "idempotency_key": "bb8-idem-1795771821",
+      "kind": "hermes_cli",
+      "payload_json": {
+        "query": "只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具",
+        "skills": "document-to-action-items",
+        "run_budget": 20,
+        "_device_id": "bb8-continuous-verify-01"
+      },
+      "status": "unknown",
+      "attempt": 1,
+      "max_attempts": 1,
+      "priority": 0,
+      "owner_pid": null,
+      "child_pid": null,
+      "generation": 1,
+      "retry_policy": "never",
+      "lease_until": null,
+      "cancel_requested": 0,
+      "next_run_at": 1795771821.082849,
+      "created_at": 1795771821.082849,
+      "updated_at": 1795771914.2345836,
+      "started_at": 1795771866.832925,
+      "finished_at": 1795771914.2345836,
+      "result_json": null,
+      "error": "{\"exit_code\": -99, \"stderr\": \"\", \"stdout\": \"Query: 只回答 BB8-IDEMPOTENCY-CHECK，不要使用任何工具\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\n\\u001b[1;38;2;255;191;0mSession 20261127_173110_2675e1 found but has no messages. Starting fresh.\\u001b[0m\\r\\n\\u001b[38;2;255;191;0m────────────────────────────────────────\\u001b[0m\\r\\n\\r\\n\", \"stdout_bytes\": 343, \"stderr_bytes\": 0, \"output_truncated\": false}"
+    }
+  },
+  "error": null
+}

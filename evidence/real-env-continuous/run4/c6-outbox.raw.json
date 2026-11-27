@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "elapsed_s": 0.0,
+  "raw": "{\"outbox\": [{\"delivery_id\": \"tsk_f27b928d29dd4622:g1\", \"task_id\": \"tsk_f27b928d29dd4622\", \"device_id\": \"bb8-continuous-verify-01\", \"payload_json\": {\"error\": {\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\r\\n\", \"stdout_bytes\": 164, \"stderr_bytes\": 0, \"output_truncated\": false}, \"exit_code\": 1, \"unknown_side_effects\": true}, \"delivered\": 0, \"attempts\": 0, \"next_attempt_at\": 0.0, \"last_error\": null, \"dead_letter\": 0, \"created_at\": 1795771801.487614, \"delivered_at\": null}]}",
+  "json": {
+    "outbox": [
+      {
+        "delivery_id": "tsk_f27b928d29dd4622:g1",
+        "task_id": "tsk_f27b928d29dd4622",
+        "device_id": "bb8-continuous-verify-01",
+        "payload_json": {
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): bb8-nonexistent-skill-zz\r\n",
+            "stdout_bytes": 164,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          },
+          "exit_code": 1,
+          "unknown_side_effects": true
+        },
+        "delivered": 0,
+        "attempts": 0,
+        "next_attempt_at": 0.0,
+        "last_error": null,
+        "dead_letter": 0,
+        "created_at": 1795771801.487614,
+        "delivered_at": null
+      }
+    ]
+  },
+  "error": null
+}

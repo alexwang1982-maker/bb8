@@ -1,0 +1,38 @@
+{
+  "status": 200,
+  "elapsed_s": 0.02,
+  "raw": "{\"tasks\": [{\"id\": \"tsk_383fd26502cb44cd\", \"idempotency_key\": \"90d894dfb372f57d3a39\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\", \"skills\": \"note-taking\", \"run_budget\": 40, \"_device_id\": \"8e2b1f506aa0eeed\"}, \"status\": \"failed\", \"attempt\": 2, \"max_attempts\": 2, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 2, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770846.5304067, \"created_at\": 1795770836.1595318, \"updated_at\": 1795770854.13958, \"started_at\": 1795770846.6367223, \"finished_at\": 1795770854.13958, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): note-taking\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 169, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}]}",
+  "json": {
+    "tasks": [
+      {
+        "id": "tsk_383fd26502cb44cd",
+        "idempotency_key": "90d894dfb372f57d3a39",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA",
+          "skills": "note-taking",
+          "run_budget": 40,
+          "_device_id": "8e2b1f506aa0eeed"
+        },
+        "status": "failed",
+        "attempt": 2,
+        "max_attempts": 2,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 2,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795770846.5304067,
+        "created_at": 1795770836.1595318,
+        "updated_at": 1795770854.13958,
+        "started_at": 1795770846.6367223,
+        "finished_at": 1795770854.13958,
+        "result_json": null,
+        "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): note-taking\\r\\n\", \"stdout_bytes\": 169, \"stderr_bytes\": 0, \"output_truncated\": false}"
+      }
+    ]
+  },
+  "error": null
+}

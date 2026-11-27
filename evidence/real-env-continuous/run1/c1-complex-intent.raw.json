@@ -1,0 +1,37 @@
+{
+  "status": 200,
+  "elapsed_s": 31.264,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-d9c3d94a581649849450",
+    "object": "chat.completion",
+    "created": 1795769765,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "摄像头画面没拿到（视觉技能没回）。不过我还是把这个观察记成笔记任务——\n\n",
+          "tool_calls": [
+            {
+              "id": "call_3c47fdf1cafe40c190bc23a4",
+              "type": "function",
+              "function": {
+                "name": "submit_task",
+                "arguments": "{\"query\": \"创建一条安全笔记：记录本次摄像头观察任务（BB-8 视角），内容为\\\"摄像头画面未能获取（视觉技能超时）\\\"，仅写文字，不涉及任何物理操作。\", \"skill\": \"note_safe\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

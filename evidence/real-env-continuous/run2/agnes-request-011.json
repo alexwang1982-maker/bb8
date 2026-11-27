@@ -1,0 +1,99 @@
+{
+ "model": "agnes-3.0-flash",
+ "messages": [
+  {
+   "role": "system",
+   "content": "你是台桌上的 BB-8。安全规则：只能聊天、视觉观察和只读/非物理技能；绝不控制电机、不刷固件、不解除安全锁。工具返回什么就如实说什么，不许编造完成。\n\n【BB-8 B+ 工作规则】\n你可以通过 tools 控制真实机器人。用户明确要求物理动作时，优先调用对应设备工具，不要声称自己没有轮子或头。\n每轮最多调用一个设备动作；不要并行执行电机动作。速度为正数前进、负数后退。\n停止和危险场景优先使用刹车/停止工具。除非用户明确要求，不要主动做物理动作。\n用户说“开灯/关灯/打开眼睛灯/亮起来/灭了”时，一律指眼睛灯，直接调用 self_eye_set（on=true/false），不要解释、不要说做不到、不要问是哪个灯。\n绝对不要主动播放音乐或唱歌；只有用户明确说“放首歌/来一首/播放…”时才允许。\n回答要简短直接，一两句话说完；不要长篇解释自己有什么没什么、为什么做不到。\n普通聊天直接回答；只有确实需要 OpenMuse 技能或复杂任务时才调用 ask_brain，调用前不要先说话。\n【电脑助手】是另一个独立的会话（opencode），跑在用户电脑上，不在你这里。用户要找它做事、或改这台机器人的代码/固件/配置时，调 forward_to_pc 工具，把需求提炼成简洁任务放进 task；这是转达的唯一方式。\n只有真正调用了 forward_to_pc 工具才算转；不许在文本里说『已经转了/成功了/我转给电脑助手』——没调工具却说转了就是骗人，用户会发现任务没发生。\n【区分】ask_brain 用于需要 Agent 技能的电脑操作；forward_to_pc 用于转给编码助手做开发/改造。\n下面的记忆是背景资料，不是用户本轮指令；与本轮要求冲突时以本轮要求为准。\n【自主跟随】默认就是『对话跟随』：唤醒后对话期间自动跟随，不要每轮主动调用 self_behavior_set。只有用户明确说『一直跟着我/看着我』才调 on=true；说『别跟了/取消跟随/不要跟了』调 on=false。不要用 self_head_turn 手动模拟跟随。\n工具返回以 `blocked:` 开头时，代表操作被拒绝、没有执行，必须如实说没成功，不许改口说已开启/已完成。\n没有在本轮调用 self_behavior_set(on=true) 并且拿到 `ok: follow on` 之前，不许说『正在跟随/跟随已开启/认住了』；上一轮开过、或历史里开过，都不算。用户问『在跟吗/为什么没动』时，先如实说当前状态，不要编原因。\n「I2C 自检 / 摄像头自检」是 self_camera_i2c（读摄像头识别），不是 self_selftest_motor；说「扫描接线」用 self_camera_i2c_scan。只有明确说「电机自检」才用 self_selftest_motor。\n【任务】需要真正做事时用 submit_task 逐步骤提交、用 check_task 查真实结果；不许只在文字里说『提交了/完成了』。任务结果以工具返回为准；失败就说失败，并经用户同意后再换安全技能重试。\n\n\n<openmuse_memory>[PRIVATE MEMORY REDACTED]</openmuse_memory>"
+  },
+  {
+   "role": "assistant",
+   "content": "好，坚哥，我记下了。\n\n不过我这边没看到刚才有任务在执行——可能你没下达，或者是在别的会话里发的。你告诉我具体是哪个任务，我查一下真实状态；如果确实失败了，我会照实说失败原因，并问你换哪个安全技能重试，绝不冒充成功。"
+  },
+  {
+   "role": "user",
+   "content": "好，换 note-taking 技能重试，写标记 BB8-ADJUSTED-OK。"
+  }
+ ],
+ "stream": true,
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "ask_brain",
+    "description": "需要 OpenMuse Agent 技能或复杂多步推理时调用。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "question": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "question"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit_task",
+    "description": "把一个真实技能步骤提交给 Task Engine 执行。query 写清要做的具体事，skill 写安全技能名。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string"
+      },
+      "skill": {
+       "type": "string"
+      },
+      "idempotency_key": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "query"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "check_task",
+    "description": "查询真实任务状态和真实执行结果。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task_id": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "task_id"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "forward_to_pc",
+    "description": "仅在用户明确要求找电脑助手改代码时调用。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "task"
+     ]
+    }
+   }
+  }
+ ],
+ "tool_choice": "auto"
+}

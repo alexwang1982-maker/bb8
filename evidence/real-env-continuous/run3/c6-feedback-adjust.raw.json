@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 7.968,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-d15f6d64d6ff4cd89f38",
+    "object": "chat.completion",
+    "created": 1795771005,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "刚才那两个任务都失败了。原因一样：Task Engine 里根本没有“note-taking”这个技能，报的是 Unknown skill(s): note-taking，所以都没能执行成功。\n\n要不要换个安全技能重试？比如我换成 OpenMuse 现有的笔记/记录类技能（如 openmuse_note、openmuse_diary 或写个普通文本文件）来完成这两条内容？你确认一下用哪个，我再提交。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

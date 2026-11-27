@@ -1,0 +1,37 @@
+{
+  "status": 202,
+  "elapsed_s": 0.063,
+  "raw": "{\"task\": {\"id\": \"tsk_f27b928d29dd4622\", \"idempotency_key\": \"bb8-fail-adjust-1795771793\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\", \"skills\": \"bb8-nonexistent-skill-zz\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795771793.5776894, \"created_at\": 1795771793.5776894, \"updated_at\": 1795771793.5776894, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null}, \"duplicate\": false}",
+  "json": {
+    "task": {
+      "id": "tsk_f27b928d29dd4622",
+      "idempotency_key": "bb8-fail-adjust-1795771793",
+      "kind": "hermes_cli",
+      "payload_json": {
+        "query": "读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK",
+        "skills": "bb8-nonexistent-skill-zz",
+        "run_budget": 20,
+        "_device_id": "bb8-continuous-verify-01"
+      },
+      "status": "queued",
+      "attempt": 0,
+      "max_attempts": 1,
+      "priority": 0,
+      "owner_pid": null,
+      "child_pid": null,
+      "generation": 0,
+      "retry_policy": "never",
+      "lease_until": null,
+      "cancel_requested": 0,
+      "next_run_at": 1795771793.5776894,
+      "created_at": 1795771793.5776894,
+      "updated_at": 1795771793.5776894,
+      "started_at": null,
+      "finished_at": null,
+      "result_json": null,
+      "error": null
+    },
+    "duplicate": false
+  },
+  "error": null
+}
