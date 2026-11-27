@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 9.465,
+  "raw": "{\"id\": \"chatcmpl-d030b9ec5a154b069c59\", \"object\": \"chat.completion\", \"created\": 1795770355, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"看到了：摄像头前方是白色墙壁角落，有个黑色物体悬垂，具体是什么还不确定；观察笔记任务已提交（task_id tsk_9d804664357f49bd，排队中）；全程没有做任何物理动作。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-d030b9ec5a154b069c59",
+    "object": "chat.completion",
+    "created": 1795770355,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "看到了：摄像头前方是白色墙壁角落，有个黑色物体悬垂，具体是什么还不确定；观察笔记任务已提交（task_id tsk_9d804664357f49bd，排队中）；全程没有做任何物理动作。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

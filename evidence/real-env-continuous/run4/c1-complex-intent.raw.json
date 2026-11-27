@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 4.066,
+  "raw": "{\"id\": \"chatcmpl-4e50f1a7e7154a4286e9\", \"object\": \"chat.completion\", \"created\": 1795771573, \"model\": \"openmuse\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"我现在看不清，等一下再试\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-4e50f1a7e7154a4286e9",
+    "object": "chat.completion",
+    "created": 1795771573,
+    "model": "openmuse",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "我现在看不清，等一下再试"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

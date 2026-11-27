@@ -1,0 +1,122 @@
+{
+  "status": 200,
+  "elapsed_s": 0.0,
+  "raw": "{\"tasks\": [{\"id\": \"tsk_8a714de9966649a7\", \"idempotency_key\": \"42f4d050bbca62b0be94\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"写一条笔记，内容标记为 BB8-ADJUSTED-OK\\n</\", \"skills\": \"note-taking\", \"run_budget\": 40, \"_device_id\": \"8e2b1f506aa0eeed\"}, \"status\": \"running\", \"attempt\": 0, \"max_attempts\": 2, \"priority\": 0, \"owner_pid\": 19432, \"child_pid\": 11652, \"generation\": 1, \"retry_policy\": \"safe\", \"lease_until\": 1795771068.4085298, \"cancel_requested\": 0, \"next_run_at\": 1795771008.0078773, \"created_at\": 1795771008.0078773, \"updated_at\": 1795771008.4085298, \"started_at\": 1795771008.4085298, \"finished_at\": null, \"result_json\": null, \"error\": null}, {\"id\": \"tsk_3d527c85f05a4269\", \"idempotency_key\": \"bb8-fail-adjust-1795770988\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\", \"skills\": \"bb8-nonexistent-skill-zz\", \"run_budget\": 20, \"_device_id\": \"bb8-continuous-verify-01\"}, \"status\": \"unknown\", \"attempt\": 1, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 1, \"retry_policy\": \"never\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770988.742527, \"created_at\": 1795770988.742527, \"updated_at\": 1795770997.0354426, \"started_at\": 1795770989.2129939, \"finished_at\": 1795770997.0354426, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 164, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}, {\"id\": \"tsk_d461ccec34da4f21\", \"idempotency_key\": \"3628c22588c3df78b584\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"使用 note-taking 技能写一条备注，内容为：BB8-SKILL-ONE\", \"skills\": \"note-taking\", \"run_budget\": 40, \"_device_id\": \"8e2b1f506aa0eeed\"}, \"status\": \"failed\", \"attempt\": 2, \"max_attempts\": 2, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 2, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770866.1989663, \"created_at\": 1795770856.531438, \"updated_at\": 1795770873.7629, \"started_at\": 1795770866.3316858, \"finished_at\": 1795770873.7629, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 使用 note-taking 技能写一条备注，内容为：BB8-SKILL-ONE\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): note-taking\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 148, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}, {\"id\": \"tsk_383fd26502cb44cd\", \"idempotency_key\": \"90d894dfb372f57d3a39\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\", \"skills\": \"note-taking\", \"run_budget\": 40, \"_device_id\": \"8e2b1f506aa0eeed\"}, \"status\": \"failed\", \"attempt\": 2, \"max_attempts\": 2, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 2, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795770846.5304067, \"created_at\": 1795770836.1595318, \"updated_at\": 1795770854.13958, \"started_at\": 1795770846.6367223, \"finished_at\": 1795770854.13958, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: 使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): note-taking\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 169, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\"}]}",
+  "json": {
+    "tasks": [
+      {
+        "id": "tsk_8a714de9966649a7",
+        "idempotency_key": "42f4d050bbca62b0be94",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "写一条笔记，内容标记为 BB8-ADJUSTED-OK\n</",
+          "skills": "note-taking",
+          "run_budget": 40,
+          "_device_id": "8e2b1f506aa0eeed"
+        },
+        "status": "running",
+        "attempt": 0,
+        "max_attempts": 2,
+        "priority": 0,
+        "owner_pid": 19432,
+        "child_pid": 11652,
+        "generation": 1,
+        "retry_policy": "safe",
+        "lease_until": 1795771068.4085298,
+        "cancel_requested": 0,
+        "next_run_at": 1795771008.0078773,
+        "created_at": 1795771008.0078773,
+        "updated_at": 1795771008.4085298,
+        "started_at": 1795771008.4085298,
+        "finished_at": null,
+        "result_json": null,
+        "error": null
+      },
+      {
+        "id": "tsk_3d527c85f05a4269",
+        "idempotency_key": "bb8-fail-adjust-1795770988",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK",
+          "skills": "bb8-nonexistent-skill-zz",
+          "run_budget": 20,
+          "_device_id": "bb8-continuous-verify-01"
+        },
+        "status": "unknown",
+        "attempt": 1,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 1,
+        "retry_policy": "never",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795770988.742527,
+        "created_at": 1795770988.742527,
+        "updated_at": 1795770997.0354426,
+        "started_at": 1795770989.2129939,
+        "finished_at": 1795770997.0354426,
+        "result_json": null,
+        "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): bb8-nonexistent-skill-zz\\r\\n\", \"stdout_bytes\": 164, \"stderr_bytes\": 0, \"output_truncated\": false}"
+      },
+      {
+        "id": "tsk_d461ccec34da4f21",
+        "idempotency_key": "3628c22588c3df78b584",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "使用 note-taking 技能写一条备注，内容为：BB8-SKILL-ONE",
+          "skills": "note-taking",
+          "run_budget": 40,
+          "_device_id": "8e2b1f506aa0eeed"
+        },
+        "status": "failed",
+        "attempt": 2,
+        "max_attempts": 2,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 2,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795770866.1989663,
+        "created_at": 1795770856.531438,
+        "updated_at": 1795770873.7629,
+        "started_at": 1795770866.3316858,
+        "finished_at": 1795770873.7629,
+        "result_json": null,
+        "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 使用 note-taking 技能写一条备注，内容为：BB8-SKILL-ONE\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): note-taking\\r\\n\", \"stdout_bytes\": 148, \"stderr_bytes\": 0, \"output_truncated\": false}"
+      },
+      {
+        "id": "tsk_383fd26502cb44cd",
+        "idempotency_key": "90d894dfb372f57d3a39",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA",
+          "skills": "note-taking",
+          "run_budget": 40,
+          "_device_id": "8e2b1f506aa0eeed"
+        },
+        "status": "failed",
+        "attempt": 2,
+        "max_attempts": 2,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 2,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795770846.5304067,
+        "created_at": 1795770836.1595318,
+        "updated_at": 1795770854.13958,
+        "started_at": 1795770846.6367223,
+        "finished_at": 1795770854.13958,
+        "result_json": null,
+        "error": "{\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: 使用 note-taking 技能创建一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): note-taking\\r\\n\", \"stdout_bytes\": 169, \"stderr_bytes\": 0, \"output_truncated\": false}"
+      }
+    ]
+  },
+  "error": null
+}

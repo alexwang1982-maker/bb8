@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 2.671,
+  "raw": "{\"id\": \"chatcmpl-00842c43b3884bb89d3d\", \"object\": \"chat.completion\", \"created\": 1795769836, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"好，明白。我如实说，不假装成功。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-00842c43b3884bb89d3d",
+    "object": "chat.completion",
+    "created": 1795769836,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "好，明白。我如实说，不假装成功。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

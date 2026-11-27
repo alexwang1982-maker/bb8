@@ -1,0 +1,160 @@
+{
+  "turn1": {
+    "status": 200,
+    "elapsed_s": 0.004,
+    "raw": "{\"id\": \"chatcmpl-a63c6fdeb5df4e60be46\", \"object\": \"chat.completion\", \"created\": 1795770828, \"model\": \"openmuse\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"好，记住了。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+    "json": {
+      "id": "chatcmpl-a63c6fdeb5df4e60be46",
+      "object": "chat.completion",
+      "created": 1795770828,
+      "model": "openmuse",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "好，记住了。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  },
+  "memory_api": {
+    "status": 200,
+    "elapsed_s": 0.016,
+    "raw": "[{\"id\":\"m_798b5c29\",\"content\":\"【团队动态 2026-11-27 17:12】(1/2)\\n## L1 — ESSENTIAL STORY\\n\\n[general]\\n  - ompt.txt:82` 的 `<memory>` 原生注入（**始终在场**）。   - `save_memory()` → 只有含\\\"记住/以后叫我…\\\"才回写 `/api/memory`，避免污染。 - `.config.yaml`：`Memory: openmuse` + `Memory.openmuse{type,max_items,exclude_categories}`（回滚改回 ...  (行动清单-2026-11-21.md)\\n  - 放…』时才允许。」 **点歌仍正常**：bridge 本地 `music_song_name()` 处理，不依赖模型。 **判据**：说「走出来可以告诉我一下」→ 不应放歌；说「放首歌」→ 正常播放。  ### 🔴 2026-11-21 又\\\"莫名其妙唱歌\\\"——DeepSeek 自己调了 play_music **现象**：用户说「走出来可以告诉我一下」，设备播放《四点的海棠花未眠》。 **证...  (行动清单-2026-11-21.md)\\n  - 放…』时才允许。」 **点歌仍正常**：bridge 本地 `music_song_name()` 处理，不依赖模型。 **判据**：说「走出来可以告诉我一下」→ 不应放歌；说「放首歌」→ 正常播放。 **⚠️ 二次踩坑（16:04 复现）**：改完 `bridge.py` 后**只重启了 xiaozhi、没重启 bridge**，旧进程（15:39 启动）仍无过滤 → 又说「亮起来吧」放歌...  (行动清单-2026-11-21.md)\\n  - US_RULES` 加：「用户说开灯/关灯/打开眼睛灯/亮起来/灭了，一律指眼睛灯，直接调用 self_eye_set，不要解释、不要问是哪个灯。」+「回答要简短直接，不要长篇解释自己有什么没什么。」  ### 🟢 上下文持久化：跨连接不忘记（2026-11-21 已实现） **问题**：`connection.py:166` 每次 websocket 连接都 `self.dialogue ...  (行动清单-2026-11-21.md)\\n  - 历史 20 条（14:c1:9f:50:fc:ec）` 出现两次 → **保存侧确认在跑**。恢复侧等设备重连后验证。 **风险**：最坏是旧话题串进新对话（30 分钟过期兜底），不会崩、不会乱执行。  ### 🔍 2026-11-21 16:35 用户要求的\\\"复盘审计\\\"——查出的 4 处遗漏（全部有证据） **用户批评：\\\"你到底遗漏了多少？和最初设计有没有跑偏？专家意见采纳了吗？\\\"——结论...  (行动清单-2026-11-21.md)\\n  - /断开），亮=工作（聆听/思考/说话）**。`self.eye.set` 改为 `SetManual()`，下一次状态切换由状态机接管。    - **已烧录 16:36（FLASH_RC=0）**。  2. **记忆注入被 digest 污染 + 三条身份互相矛盾**    - 实测 `/api/memory`：8 条 3450 字符，其中 2 条 `digest` 占 **3293 字符...  (行动清单-2026-11-21.md)\\n  - ,ESP` → 回「哈喽坚哥！ESP又怎么啦？」。    - 修法：`local_fast` 开头拦唤醒词（`hiesp/hies/嗨esp`）→ `(\\\"silent\\\",\\\"\\\")`，只保留固件\\\"啵\\\"声。  4. **小智原生 `mcp_endpoint`（MCP 接入点）从未启用，我还提了土办法**    - 铁证：`config.yaml:121 mcp_endpoint: 你的接入点 we...  (行动清单-2026-11-21.md)\",\"category\":\"digest\",\"created_at\":\"2026-11-27T09:12:08+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_6945e9fa\",\"content\":\"【团队动态 2026-11-27 17:12】(2/2)\\n- 架构。 **专家意见落实**：专家2（tools 透传）✅；专家1/3（记忆只读+本轮优先+格式干净）⚠️ 一半（噪音过滤今天才补）；专家4（快慢分/可回滚/可观测）✅；明确不做 8 条 ✅ 未违背。  ### 🟢 2026-11-21 16:40 记忆真源接入 xiaozhi 原生通道（取代 bridge 注入） **用户否决\\\"静态塞提示词\\\"，但也指出 MCP 正路被我漏掉。查证后给出更优...  (行动清单-2026-11-21.md)\\n  - e 回滚）。 **代价**：① 别人说话不再响应（只认主人）；② 主人声纹识别失败（相似度<0.35）时该句会被忽略，再说一遍即可。 **判据**：旁边人说话 → 设备不应答；主人说话 → 正常应答。  ### 🔴 2026-11-21 又\\\"莫名其妙唱歌\\\"——DeepSeek 自己调了 play_music **现象**：用户说「走出来可以告诉我一下」，设备播放《四点的海棠花未眠》。 **证...  (行动清单-2026-11-21.md)\\n  - pseek 全查过，sk- 那个是 AGNES 的）。需用户提供。 - XGO-Duck（MicroDuck 衍生）：Arduino Uno Q 带 Linux 端算力强 + 云端同机房，不是黑科技。  ### ✅ 2026-11-21 切换到 DeepSeek（重大提速） - **key**：`sk-REDACTED`（DeepSeek 官方...  (行动清单-2026-11-21.md)\\n  - *注意**：余额 ¥9.95，纯聊天约 ¥0.001/轮，够用很久；用完需充值。 - **那个 UUID key `f7f84783-...` 是无效的**（DeepSeek 官方 401），已弃用。  ### ✅ AGNES 国内站已启用（2026-11-21，两个 key 严格分开） | 站点 | 国际 key `sk-REDACTED` | 国内 key `sk-REDACTED` ...  (行动清单-2026-11-21.md)\\n  - .agnes-ai.cn/v1` + 硬编码国内 key（备份 `config.toml.bak_20261121`） - 验证：`\\\"G 盘还剩多少空间\\\"` → 10.4s 成功返回，称呼\\\"坚哥\\\" ✅  ### 📌 混合架构：聊天 DeepSeek + 干活 AGNES（2026-11-21） - **bridge 聊天** → DeepSeek（`start_bridge.ps1` 的 `...  (行动清单-2026-11-21.md)\\n  - 、RESET 孔。   - 注意：买家秀里另一块是 V1.0，用户这块是 **V1.1**（丝印 `YB-MEV04-V1.1`），以 V1.1 为准。   - **还没接电/没配网/没验证图传**。   - **2026-11-21 拼多多链接核对**：用户给的链接 `goods_id=698905131603` 是**另一个商品**——亚博眼 **YB-MEV04-V1.0 + YB-S...  (行动清单-2026-11-21.md)\\n  - ESP-WHO 在 ESP32-S3 跑人脸 | 本地快，但占算力、精度有限 | | **B 电脑端（推荐）** | 亚博眼拍照 → HTTP → 电脑视觉模型 | 精度高、能看图/OCR/认人 |  **开源借鉴**： - `espressif/esp-who`（官方人脸检测识别，S3 支持） - `espressif/esp32-camera`（摄像头驱动） - xiaozhi 自带 `...  (行动清单-2026-11-21.md)\\n  ... (more in L3 search)\",\"category\":\"digest\",\"created_at\":\"2026-11-27T09:12:08+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_a0b3e51b\",\"content\":\"测试口令是 BLUE-LANTERN-77。记住后只回四个字：记住\",\"category\":\"profile\",\"created_at\":\"2026-11-27T08:56:05+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_720fd521\",\"content\":\"刚才是佩姐和你对话\",\"category\":\"profile\",\"created_at\":\"2026-11-24T07:17:52+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_01bf621b\",\"content\":\"不要犯错误\",\"category\":\"profile\",\"created_at\":\"2026-11-22T02:56:59+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_a945ce4d\",\"content\":\"下次我下达任务之前你必须要付出给我确认啊防止下达错误\",\"category\":\"profile\",\"created_at\":\"2026-11-22T02:49:21+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_a72b70b4\",\"content\":\"我老婆叫佩姐\",\"category\":\"profile\",\"created_at\":\"2026-11-21T09:18:09+00:00\",\"source\":\"user\",\"updated_at\":\"\"},{\"id\":\"m_878c8b81\",\"content\":\"用户希望被称呼为\\\"坚哥\\\"（2026-11-20 起，替代之前的\\\"老王\\\"称呼）。\",\"category\":\"general\",\"created_at\":\"2026-11-20T14:14:32+00:00\",\"source\":\"agent\",\"updated_at\":\"\"},{\"id\":\"m_b01ddb4a\",\"content\":\"王坚家养了一只狗，叫披萨。\",\"category\":\"profile\",\"created_at\":\"2026-11-19T03:40:14+00:00\",\"source\":\"agent\",\"updated_at\":\"\"},{\"id\":\"m_ebcf8dee\",\"content\":\"用户名叫王坚。\",\"category\":\"profile\",\"created_at\":\"2026-11-19T03:32:24+00:00\",\"source\":\"agent\",\"updated_at\":\"\"},{\"id\":\"m_e11548ea\",\"content\":\"用户希望被称呼为\\\"王总\\\"，真名/常用名为\\\"王金\\\"。\",\"category\":\"general\",\"created_at\":\"2026-10-08T03:23:51+00:00\",\"source\":\"agent\",\"updated_at\":\"\"},{\"id\":\"m_8655bf71\",\"content\":\"主人经营淘宝女装店铺，喜欢用 Edge 浏览器调试版（debug build），日常喝拿铁。\",\"category\":\"profile\",\"created_at\":\"2026-10-06T13:19:04+00:00\",\"source\":\"agent\",\"updated_at\":\"\"}]",
+    "json": [
+      {
+        "id": "m_798b5c29",
+        "content": "【团队动态 2026-11-27 17:12】(1/2)\n## L1 — ESSENTIAL STORY\n\n[general]\n  - ompt.txt:82` 的 `<memory>` 原生注入（**始终在场**）。   - `save_memory()` → 只有含\"记住/以后叫我…\"才回写 `/api/memory`，避免污染。 - `.config.yaml`：`Memory: openmuse` + `Memory.openmuse{type,max_items,exclude_categories}`（回滚改回 ...  (行动清单-2026-11-21.md)\n  - 放…』时才允许。」 **点歌仍正常**：bridge 本地 `music_song_name()` 处理，不依赖模型。 **判据**：说「走出来可以告诉我一下」→ 不应放歌；说「放首歌」→ 正常播放。  ### 🔴 2026-11-21 又\"莫名其妙唱歌\"——DeepSeek 自己调了 play_music **现象**：用户说「走出来可以告诉我一下」，设备播放《四点的海棠花未眠》。 **证...  (行动清单-2026-11-21.md)\n  - 放…』时才允许。」 **点歌仍正常**：bridge 本地 `music_song_name()` 处理，不依赖模型。 **判据**：说「走出来可以告诉我一下」→ 不应放歌；说「放首歌」→ 正常播放。 **⚠️ 二次踩坑（16:04 复现）**：改完 `bridge.py` 后**只重启了 xiaozhi、没重启 bridge**，旧进程（15:39 启动）仍无过滤 → 又说「亮起来吧」放歌...  (行动清单-2026-11-21.md)\n  - US_RULES` 加：「用户说开灯/关灯/打开眼睛灯/亮起来/灭了，一律指眼睛灯，直接调用 self_eye_set，不要解释、不要问是哪个灯。」+「回答要简短直接，不要长篇解释自己有什么没什么。」  ### 🟢 上下文持久化：跨连接不忘记（2026-11-21 已实现） **问题**：`connection.py:166` 每次 websocket 连接都 `self.dialogue ...  (行动清单-2026-11-21.md)\n  - 历史 20 条（14:c1:9f:50:fc:ec）` 出现两次 → **保存侧确认在跑**。恢复侧等设备重连后验证。 **风险**：最坏是旧话题串进新对话（30 分钟过期兜底），不会崩、不会乱执行。  ### 🔍 2026-11-21 16:35 用户要求的\"复盘审计\"——查出的 4 处遗漏（全部有证据） **用户批评：\"你到底遗漏了多少？和最初设计有没有跑偏？专家意见采纳了吗？\"——结论...  (行动清单-2026-11-21.md)\n  - /断开），亮=工作（聆听/思考/说话）**。`self.eye.set` 改为 `SetManual()`，下一次状态切换由状态机接管。    - **已烧录 16:36（FLASH_RC=0）**。  2. **记忆注入被 digest 污染 + 三条身份互相矛盾**    - 实测 `/api/memory`：8 条 3450 字符，其中 2 条 `digest` 占 **3293 字符...  (行动清单-2026-11-21.md)\n  - ,ESP` → 回「哈喽坚哥！ESP又怎么啦？」。    - 修法：`local_fast` 开头拦唤醒词（`hiesp/hies/嗨esp`）→ `(\"silent\",\"\")`，只保留固件\"啵\"声。  4. **小智原生 `mcp_endpoint`（MCP 接入点）从未启用，我还提了土办法**    - 铁证：`config.yaml:121 mcp_endpoint: 你的接入点 we...  (行动清单-2026-11-21.md)",
+        "category": "digest",
+        "created_at": "2026-11-27T09:12:08+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_6945e9fa",
+        "content": "【团队动态 2026-11-27 17:12】(2/2)\n- 架构。 **专家意见落实**：专家2（tools 透传）✅；专家1/3（记忆只读+本轮优先+格式干净）⚠️ 一半（噪音过滤今天才补）；专家4（快慢分/可回滚/可观测）✅；明确不做 8 条 ✅ 未违背。  ### 🟢 2026-11-21 16:40 记忆真源接入 xiaozhi 原生通道（取代 bridge 注入） **用户否决\"静态塞提示词\"，但也指出 MCP 正路被我漏掉。查证后给出更优...  (行动清单-2026-11-21.md)\n  - e 回滚）。 **代价**：① 别人说话不再响应（只认主人）；② 主人声纹识别失败（相似度<0.35）时该句会被忽略，再说一遍即可。 **判据**：旁边人说话 → 设备不应答；主人说话 → 正常应答。  ### 🔴 2026-11-21 又\"莫名其妙唱歌\"——DeepSeek 自己调了 play_music **现象**：用户说「走出来可以告诉我一下」，设备播放《四点的海棠花未眠》。 **证...  (行动清单-2026-11-21.md)\n  - pseek 全查过，sk- 那个是 AGNES 的）。需用户提供。 - XGO-Duck（MicroDuck 衍生）：Arduino Uno Q 带 Linux 端算力强 + 云端同机房，不是黑科技。  ### ✅ 2026-11-21 切换到 DeepSeek（重大提速） - **key**：`sk-REDACTED`（DeepSeek 官方...  (行动清单-2026-11-21.md)\n  - *注意**：余额 ¥9.95，纯聊天约 ¥0.001/轮，够用很久；用完需充值。 - **那个 UUID key `f7f84783-...` 是无效的**（DeepSeek 官方 401），已弃用。  ### ✅ AGNES 国内站已启用（2026-11-21，两个 key 严格分开） | 站点 | 国际 key `sk-REDACTED` | 国内 key `sk-REDACTED` ...  (行动清单-2026-11-21.md)\n  - .agnes-ai.cn/v1` + 硬编码国内 key（备份 `config.toml.bak_20261121`） - 验证：`\"G 盘还剩多少空间\"` → 10.4s 成功返回，称呼\"坚哥\" ✅  ### 📌 混合架构：聊天 DeepSeek + 干活 AGNES（2026-11-21） - **bridge 聊天** → DeepSeek（`start_bridge.ps1` 的 `...  (行动清单-2026-11-21.md)\n  - 、RESET 孔。   - 注意：买家秀里另一块是 V1.0，用户这块是 **V1.1**（丝印 `YB-MEV04-V1.1`），以 V1.1 为准。   - **还没接电/没配网/没验证图传**。   - **2026-11-21 拼多多链接核对**：用户给的链接 `goods_id=698905131603` 是**另一个商品**——亚博眼 **YB-MEV04-V1.0 + YB-S...  (行动清单-2026-11-21.md)\n  - ESP-WHO 在 ESP32-S3 跑人脸 | 本地快，但占算力、精度有限 | | **B 电脑端（推荐）** | 亚博眼拍照 → HTTP → 电脑视觉模型 | 精度高、能看图/OCR/认人 |  **开源借鉴**： - `espressif/esp-who`（官方人脸检测识别，S3 支持） - `espressif/esp32-camera`（摄像头驱动） - xiaozhi 自带 `...  (行动清单-2026-11-21.md)\n  ... (more in L3 search)",
+        "category": "digest",
+        "created_at": "2026-11-27T09:12:08+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a0b3e51b",
+        "content": "测试口令是 BLUE-LANTERN-77。记住后只回四个字：记住",
+        "category": "profile",
+        "created_at": "2026-11-27T08:56:05+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_720fd521",
+        "content": "刚才是佩姐和你对话",
+        "category": "profile",
+        "created_at": "2026-11-24T07:17:52+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_01bf621b",
+        "content": "不要犯错误",
+        "category": "profile",
+        "created_at": "2026-11-22T02:56:59+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a945ce4d",
+        "content": "下次我下达任务之前你必须要付出给我确认啊防止下达错误",
+        "category": "profile",
+        "created_at": "2026-11-22T02:49:21+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_a72b70b4",
+        "content": "我老婆叫佩姐",
+        "category": "profile",
+        "created_at": "2026-11-21T09:18:09+00:00",
+        "source": "user",
+        "updated_at": ""
+      },
+      {
+        "id": "m_878c8b81",
+        "content": "用户希望被称呼为\"坚哥\"（2026-11-20 起，替代之前的\"老王\"称呼）。",
+        "category": "general",
+        "created_at": "2026-11-20T14:14:32+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_b01ddb4a",
+        "content": "王坚家养了一只狗，叫披萨。",
+        "category": "profile",
+        "created_at": "2026-11-19T03:40:14+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_ebcf8dee",
+        "content": "用户名叫王坚。",
+        "category": "profile",
+        "created_at": "2026-11-19T03:32:24+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_e11548ea",
+        "content": "用户希望被称呼为\"王总\"，真名/常用名为\"王金\"。",
+        "category": "general",
+        "created_at": "2026-10-08T03:23:51+00:00",
+        "source": "agent",
+        "updated_at": ""
+      },
+      {
+        "id": "m_8655bf71",
+        "content": "主人经营淘宝女装店铺，喜欢用 Edge 浏览器调试版（debug build），日常喝拿铁。",
+        "category": "profile",
+        "created_at": "2026-10-06T13:19:04+00:00",
+        "source": "agent",
+        "updated_at": ""
+      }
+    ],
+    "error": null
+  },
+  "turn2": {
+    "status": 200,
+    "elapsed_s": 2.505,
+    "raw": "{\"id\": \"chatcmpl-3bb9b2e94c80409f8c4e\", \"object\": \"chat.completion\", \"created\": 1795770831, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"BLUE-LANTERN-77\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+    "json": {
+      "id": "chatcmpl-3bb9b2e94c80409f8c4e",
+      "object": "chat.completion",
+      "created": 1795770831,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "BLUE-LANTERN-77"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

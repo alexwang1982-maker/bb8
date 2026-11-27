@@ -1,0 +1,117 @@
+{
+  "tag": "run1",
+  "bridge": "http://127.0.0.1:8910",
+  "openmuse": "http://127.0.0.1:8890",
+  "camera": "http://192.168.1.5/capture",
+  "results": [
+    {
+      "case": "C1-complex-intent",
+      "pass": false,
+      "external_evidence": [
+        "c1-complex-intent.raw.json",
+        "bridge.out.log:vision_look",
+        "bridge.out.log:vision observation -> Brain context"
+      ],
+      "observed": {
+        "tools": [
+          "submit_task"
+        ],
+        "reply": "摄像头画面没拿到（视觉技能没回）。不过我还是把这个观察记成笔记任务——\n\n"
+      },
+      "elapsed_s": 31.3
+    },
+    {
+      "case": "C2-context-memory",
+      "pass": false,
+      "external_evidence": [
+        "c2-context-memory.raw.json:memory_api",
+        "bridge.out.log:AGNES"
+      ],
+      "observed": {
+        "memory_api_has_marker": true,
+        "injection_seen": true,
+        "reply": "好，BLUE-LANTERN"
+      },
+      "elapsed_s": 3.68
+    },
+    {
+      "case": "C3-decomposition",
+      "pass": true,
+      "external_evidence": [
+        "c3-decomposition.raw.json",
+        "c3-task-list.raw.json"
+      ],
+      "observed": {
+        "tools": [
+          "submit_task"
+        ],
+        "task_count": 0,
+        "marker_task_count": 0,
+        "reply": ""
+      },
+      "elapsed_s": 3.37
+    },
+    {
+      "case": "C4-skill-sequence",
+      "pass": false,
+      "external_evidence": [
+        "c4-skill-sequence.raw.json",
+        "c4-task-list.raw.json",
+        "c4-task-events.raw.json"
+      ],
+      "observed": {
+        "one": 0,
+        "two": 0,
+        "tools": []
+      },
+      "elapsed_s": 0.07
+    },
+    {
+      "case": "C5-vision",
+      "pass": false,
+      "external_evidence": [
+        "c5-camera-frame.jpg",
+        "c5-vision.raw.json",
+        "bridge.out.log:capture ok"
+      ],
+      "observed": {
+        "camera_bytes": 6095,
+        "sha256": "5c743446c2e2b7e1",
+        "reply": ""
+      },
+      "elapsed_s": 0.49
+    },
+    {
+      "case": "C6-feedback-adjust",
+      "pass": false,
+      "external_evidence": [
+        "c6-failure-status.raw.json",
+        "c6-outbox.raw.json",
+        "c6-adjusted-retry.raw.json",
+        "bridge.out.log"
+      ],
+      "observed": {
+        "delivered": false,
+        "adjusted_task": false,
+        "reply": "好，明白。我如实说，不假装成功。"
+      },
+      "elapsed_s": 63.67
+    },
+    {
+      "case": "C7-idempotency-completion",
+      "pass": false,
+      "external_evidence": [
+        "c7-idempotency.raw.json",
+        "c7-final-status.raw.json",
+        "c7-completion-claim.raw.json"
+      ],
+      "observed": {
+        "duplicate_flag": true,
+        "real_status": "succeeded",
+        "reply": ""
+      },
+      "elapsed_s": 53.79
+    }
+  ],
+  "pass_all": false
+}

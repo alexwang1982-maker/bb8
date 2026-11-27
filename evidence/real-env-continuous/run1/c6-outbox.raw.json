@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "elapsed_s": 0.015,
+  "raw": "{\"outbox\": []}",
+  "json": {
+    "outbox": []
+  },
+  "error": null
+}

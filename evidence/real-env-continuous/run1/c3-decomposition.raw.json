@@ -1,0 +1,37 @@
+{
+  "status": 200,
+  "elapsed_s": 3.339,
+  "raw": "{\"id\": \"chatcmpl-082723bcfc3b4777b5da\", \"object\": \"chat.completion\", \"created\": 1795769772, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_08494667f68a4c2da5c81cb7\", \"type\": \"function\", \"function\": {\"name\": \"submit_task\", \"arguments\": \"{\\\"skill\\\": \\\"note-taking\\\", \\\"query\\\": \\\"写一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-082723bcfc3b4777b5da",
+    "object": "chat.completion",
+    "created": 1795769772,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_08494667f68a4c2da5c81cb7",
+              "type": "function",
+              "function": {
+                "name": "submit_task",
+                "arguments": "{\"skill\": \"note-taking\", \"query\": \"写一条笔记，内容包含标记：BB8-ORCHESTRATOR-ALPHA\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

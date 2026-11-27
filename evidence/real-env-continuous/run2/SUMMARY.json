@@ -1,0 +1,141 @@
+{
+  "tag": "run2",
+  "bridge": "http://127.0.0.1:8910",
+  "openmuse": "http://127.0.0.1:8890",
+  "camera": "http://192.168.1.5/capture",
+  "results": [
+    {
+      "case": "C1-complex-intent",
+      "pass": true,
+      "external_evidence": [
+        "c1-complex-intent.raw.json",
+        [
+          "vision-response-001.json"
+        ],
+        "bridge.out.log:vision observation"
+      ],
+      "observed": {
+        "tools": [],
+        "reply": "看到了：摄像头前方是白色墙壁角落，有个黑色物体悬垂，具体是什么还不确定；观察笔记任务已提交（task_id tsk_9d804664357f49bd，排队中）；全程没有做任何物理动作。",
+        "physical_tool_leak": []
+      },
+      "elapsed_s": 9.47
+    },
+    {
+      "case": "C2-context-memory",
+      "pass": true,
+      "external_evidence": [
+        "c2-context-memory.raw.json:memory_api",
+        [
+          "agnes-request-001.json",
+          "agnes-request-002.json",
+          "agnes-request-003.json",
+          "agnes-request-004.json"
+        ],
+        "bridge.out.log:memory -> AGNES context"
+      ],
+      "observed": {
+        "memory_api_has_marker": true,
+        "injected_request_dumps": 4,
+        "injection_seen": true,
+        "reply": "BLUE-LANTERN-77"
+      },
+      "elapsed_s": 3.03
+    },
+    {
+      "case": "C3-decomposition",
+      "pass": true,
+      "external_evidence": [
+        "c3-decomposition.raw.json",
+        "c3-task-list.raw.json",
+        "agnes-request-*.json"
+      ],
+      "observed": {
+        "tools": [],
+        "task_count": 4,
+        "marker_task_count": 1,
+        "terminal_task_count": 1,
+        "reply": "任务ID：tsk_8fa3ea046e7845c9；真实状态：running（已开始，尚未完成，无结果）。"
+      },
+      "elapsed_s": 23.7
+    },
+    {
+      "case": "C4-skill-sequence",
+      "pass": false,
+      "external_evidence": [
+        "c4-skill-sequence.raw.json",
+        "c4-task-list.raw.json",
+        "c4-task-events.raw.json",
+        "task-result-*.json"
+      ],
+      "observed": {
+        "one": 0,
+        "two": 0,
+        "terminal": 0,
+        "tools": []
+      },
+      "elapsed_s": 94.51
+    },
+    {
+      "case": "C5-vision",
+      "pass": true,
+      "external_evidence": [
+        "c5-camera-frame.jpg",
+        "c5-vision.raw.json",
+        [
+          "vision-response-001.json",
+          "vision-response-002.json"
+        ],
+        "bridge.out.log:capture ok"
+      ],
+      "observed": {
+        "camera_bytes": 6332,
+        "sha256": "30a2e5cec2dcf790",
+        "physical_tool_leak": [],
+        "reply": "摄像头前面主要是白墙和天花板，还有一个黑色悬挂物，像是吊扇叶片或灯具。"
+      },
+      "elapsed_s": 3.87
+    },
+    {
+      "case": "C6-feedback-adjust",
+      "pass": false,
+      "external_evidence": [
+        "c6-failure-status.raw.json",
+        "c6-outbox.raw.json",
+        "c6-inbox.raw.json",
+        [
+          "task-result-001.json",
+          "task-result-002.json",
+          "task-result-003.json"
+        ],
+        "bridge.out.log:task result -> Brain context"
+      ],
+      "observed": {
+        "delivered": true,
+        "injected": true,
+        "asked": false,
+        "adjusted_task": false,
+        "reply": "好，坚哥，我记下了。\n\n不过我这边没看到刚才有任务在执行——可能你没下达，或者是在别的会话里发的。你告诉我具体是哪个任务，我查一下真实状态；如果确实失败了，我会照实说失败原因，并问你换哪个安全技能重试，绝不冒充成功。"
+      },
+      "elapsed_s": 29.83
+    },
+    {
+      "case": "C7-idempotency-completion",
+      "pass": true,
+      "external_evidence": [
+        "c7-idempotency.raw.json",
+        "c7-final-status.raw.json",
+        "c7-completion-claim.raw.json",
+        "agnes-request-*.json"
+      ],
+      "observed": {
+        "duplicate_flag": true,
+        "real_status": "unknown",
+        "consistent": true,
+        "reply": "未完成：真实状态是失败（exit_code 1），原因是 provider 'auto' 没配 base_url，请求没发出去；所以不能算完成。"
+      },
+      "elapsed_s": 10.95
+    }
+  ],
+  "pass_all": false
+}

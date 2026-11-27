@@ -1,0 +1,17 @@
+{
+ "delivery_id": "tsk_d63a7af14ce54cf1:g1",
+ "task_id": "tsk_d63a7af14ce54cf1",
+ "device_id": "bb8-continuous-verify-01",
+ "payload": {
+  "error": {
+   "exit_code": 1,
+   "stderr": "",
+   "stdout": "Query: 读取一个不存在的技能 bb8-nonexistent-skill-zz 然后回答 OK\r\n\u001b[1;31mprovider 'auto' has no endpoint configured, so the request is not sent anywhere \u001b[0m\r\n\u001b[1;31m(it would otherwise fall back to OpenRouter). Set providers.auto.base_url or \u001b[0m\r\n\u001b[1;31mmodel.base_url in config.yaml.\u001b[0m\r\n\r\nGoodbye! ☤\r\n",
+   "stdout_bytes": 322,
+   "stderr_bytes": 0,
+   "output_truncated": false
+  },
+  "exit_code": 1,
+  "unknown_side_effects": true
+ }
+}

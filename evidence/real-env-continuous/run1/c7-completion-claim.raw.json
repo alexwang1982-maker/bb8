@@ -1,0 +1,37 @@
+{
+  "status": 200,
+  "elapsed_s": 1.738,
+  "raw": "{\"id\": \"chatcmpl-24419bca39ad40a7aef4\", \"object\": \"chat.completion\", \"created\": 1795769890, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_4ea080ac20864cbfba80b2ed\", \"type\": \"function\", \"function\": {\"name\": \"check_task\", \"arguments\": \"{\\\"task_id\\\": \\\"tsk_0538ff32960a4095\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-24419bca39ad40a7aef4",
+    "object": "chat.completion",
+    "created": 1795769890,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_4ea080ac20864cbfba80b2ed",
+              "type": "function",
+              "function": {
+                "name": "check_task",
+                "arguments": "{\"task_id\": \"tsk_0538ff32960a4095\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

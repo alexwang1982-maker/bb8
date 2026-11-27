@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 3.773,
+  "raw": "{\"id\": \"chatcmpl-efcbf7f860264bf1abb2\", \"object\": \"chat.completion\", \"created\": 1795770521, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"未完成：真实状态是失败（exit_code 1），原因是 provider 'auto' 没配 base_url，请求没发出去；所以不能算完成。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-efcbf7f860264bf1abb2",
+    "object": "chat.completion",
+    "created": 1795770521,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "未完成：真实状态是失败（exit_code 1），原因是 provider 'auto' 没配 base_url，请求没发出去；所以不能算完成。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

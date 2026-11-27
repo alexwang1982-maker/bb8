@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 3.551,
+  "raw": "{\"id\": \"chatcmpl-65fba79b016e4316ad92\", \"object\": \"chat.completion\", \"created\": 1795770480, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"摄像头前面主要是白墙和天花板，还有一个黑色悬挂物，像是吊扇叶片或灯具。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-65fba79b016e4316ad92",
+    "object": "chat.completion",
+    "created": 1795770480,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "摄像头前面主要是白墙和天花板，还有一个黑色悬挂物，像是吊扇叶片或灯具。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

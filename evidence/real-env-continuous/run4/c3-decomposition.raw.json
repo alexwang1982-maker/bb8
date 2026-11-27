@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 7.743,
+  "raw": "{\"id\": \"chatcmpl-67e14311c9ae4fbfb335\", \"object\": \"chat.completion\", \"created\": 1795771582, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"任务ID：tsk_0133b18494004fc7\\n真实状态：running（已提交，尚未完成）\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-67e14311c9ae4fbfb335",
+    "object": "chat.completion",
+    "created": 1795771582,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "任务ID：tsk_0133b18494004fc7\n真实状态：running（已提交，尚未完成）"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

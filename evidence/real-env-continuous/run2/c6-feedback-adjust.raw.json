@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 2.832,
+  "raw": "{\"id\": \"chatcmpl-38cee05b97034a48998d\", \"object\": \"chat.completion\", \"created\": 1795770490, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"好，坚哥，我记下了。\\n\\n不过我这边没看到刚才有任务在执行——可能你没下达，或者是在别的会话里发的。你告诉我具体是哪个任务，我查一下真实状态；如果确实失败了，我会照实说失败原因，并问你换哪个安全技能重试，绝不冒充成功。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-38cee05b97034a48998d",
+    "object": "chat.completion",
+    "created": 1795770490,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "好，坚哥，我记下了。\n\n不过我这边没看到刚才有任务在执行——可能你没下达，或者是在别的会话里发的。你告诉我具体是哪个任务，我查一下真实状态；如果确实失败了，我会照实说失败原因，并问你换哪个安全技能重试，绝不冒充成功。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

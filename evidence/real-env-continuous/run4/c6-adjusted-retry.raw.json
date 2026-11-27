@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 4.221,
+  "raw": "{\"id\": \"chatcmpl-e0ecaa54fb704566a42a\", \"object\": \"chat.completion\", \"created\": 1795771821, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"已提交新任务 tsk_bcb0e6ba576141e1，技能 document-to-action-items，状态 queued；要我现在查执行结果吗？\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-e0ecaa54fb704566a42a",
+    "object": "chat.completion",
+    "created": 1795771821,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "已提交新任务 tsk_bcb0e6ba576141e1，技能 document-to-action-items，状态 queued；要我现在查执行结果吗？"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

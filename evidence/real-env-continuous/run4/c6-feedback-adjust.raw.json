@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 15.062,
+  "raw": "{\"id\": \"chatcmpl-0f51d1196bcc42a8b836\", \"object\": \"chat.completion\", \"created\": 1795771816, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"坚哥，任务 tsk_f99aaf230e0e4e91 失败了，返回 exit_code -99，没有生成笔记；另一个 tsk_0133b18494004fc7 也在中途卡住，没完成。要我改用 meeting-action-items 或 weekly-review-planning 这类安全技能重试吗？\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-0f51d1196bcc42a8b836",
+    "object": "chat.completion",
+    "created": 1795771816,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "坚哥，任务 tsk_f99aaf230e0e4e91 失败了，返回 exit_code -99，没有生成笔记；另一个 tsk_0133b18494004fc7 也在中途卡住，没完成。要我改用 meeting-action-items 或 weekly-review-planning 这类安全技能重试吗？"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

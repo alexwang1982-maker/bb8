@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 13.69,
+  "raw": "{\"id\": \"chatcmpl-b4499fe55312469fa18a\", \"object\": \"chat.completion\", \"created\": 1795771928, \"model\": \"agnes-3.0-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"没有完成。真实状态是 status=unknown，任务执行异常退出（exit_code -99），没有结果输出，属于失败。\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0}}",
+  "json": {
+    "id": "chatcmpl-b4499fe55312469fa18a",
+    "object": "chat.completion",
+    "created": 1795771928,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "没有完成。真实状态是 status=unknown，任务执行异常退出（exit_code -99），没有结果输出，属于失败。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}
