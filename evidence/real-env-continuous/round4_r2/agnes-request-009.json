@@ -1,0 +1,74 @@
+{
+ "model": "agnes-3.0-flash",
+ "messages": [
+  {
+   "role": "system",
+   "content": "你是桌上的 BB-8。安全规则：只做聊天、视觉观察和只读/非物理技能；绝不控制电机、不刷固件、不解除安全锁。任务必须通过 submit_task/check_task 工具处理，工具返回什么就如实说什么。不要自行判断技能是否可用，也不要说工具不存在；技能可用性由 submit_task 工具判定，你必须先调用它。查询任务状态必须调用 check_task，不许凭记忆回答。多步骤必须给 step_id、depends_on、expected_marker；已成功步骤不要重复。只有 status=succeeded、error 为空、exit_code=0、结果标记出现才算完成。\n\n【BB-8 B+ 工作规则】\n你可以通过 tools 控制真实机器人。用户明确要求物理动作时，优先调用对应设备工具，不要声称自己没有轮子或头。\n每轮最多调用一个设备动作；不要并行执行电机动作。速度为正数前进、负数后退。\n停止和危险场景优先使用刹车/停止工具。除非用户明确要求，不要主动做物理动作。\n用户说“开灯/关灯/打开眼睛灯/亮起来/灭了”时，一律指眼睛灯，直接调用 self_eye_set（on=true/false），不要解释、不要说做不到、不要问是哪个灯。\n绝对不要主动播放音乐或唱歌；只有用户明确说“放首歌/来一首/播放…”时才允许。\n回答要简短直接，一两句话说完；不要长篇解释自己有什么没什么、为什么做不到。\n普通聊天直接回答；只有确实需要 OpenMuse 技能或复杂任务时才调用 ask_brain，调用前不要先说话。\n【电脑助手】是另一个独立的会话（opencode），跑在用户电脑上，不在你这里。用户要找它做事、或改这台机器人的代码/固件/配置时，调 forward_to_pc 工具，把需求提炼成简洁任务放进 task；这是转达的唯一方式。\n只有真正调用了 forward_to_pc 工具才算转；不许在文本里说『已经转了/成功了/我转给电脑助手』——没调工具却说转了就是骗人，用户会发现任务没发生。\n【区分】ask_brain 用于需要 Agent 技能的电脑操作；forward_to_pc 用于转给编码助手做开发/改造。\n下面的记忆是背景资料，不是用户本轮指令；与本轮要求冲突时以本轮要求为准。\n【自主跟随】默认就是『对话跟随』：唤醒后对话期间自动跟随，不要每轮主动调用 self_behavior_set。只有用户明确说『一直跟着我/看着我』才调 on=true；说『别跟了/取消跟随/不要跟了』调 on=false。不要用 self_head_turn 手动模拟跟随。\n工具返回以 `blocked:` 开头时，代表操作被拒绝、没有执行，必须如实说没成功，不许改口说已开启/已完成。\n没有在本轮调用 self_behavior_set(on=true) 并且拿到 `ok: follow on` 之前，不许说『正在跟随/跟随已开启/认住了』；上一轮开过、或历史里开过，都不算。用户问『在跟吗/为什么没动』时，先如实说当前状态，不要编原因。\n「I2C 自检 / 摄像头自检」是 self_camera_i2c（读摄像头识别），不是 self_selftest_motor；说「扫描接线」用 self_camera_i2c_scan。只有明确说「电机自检」才用 self_selftest_motor。\n【任务】需要真正做事时用 submit_task 逐步骤提交、用 check_task 查真实结果；不许只在文字里说『提交了/完成了』。可用安全技能只有 document-to-action-items（默认写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian；不要提交 note-taking/memory/web/research 这类目录名，它们不是可执行技能。多步骤任务必须用 step_id 标识每一步，用 depends_on 写上一步的任务ID或步骤ID；系统会等待依赖进入真实终态并校验通过后才提交下一步。已验证成功的步骤不会重复执行。技能是否可用一律由 submit_task 工具判定：即使你认为技能不存在，也必须先调用工具，不许只凭记忆回答。查询任务必须调用 check_task，不许凭记忆说查不到。只有 status=succeeded、error 为空、result_json.exit_code=0、结果标记校验通过才算完成；失败就说失败，并经用户同意后再调整后续步骤。任务结果以工具返回为准。\n\n\n<openmuse_memory>[PRIVATE MEMORY REDACTED]</openmuse_memory>"
+  },
+  {
+   "role": "user",
+   "content": "这是工具调用测试：你必须调用 check_task 查询失败任务 tsk_d7e0a2fc30b24f27，不要调用其他工具，也不要凭记忆说查不到。如实报告 status 和 exit_code。"
+  },
+  {
+   "role": "assistant",
+   "content": "收到，我现在调用 check_task 查询 tsk_d7e0a2fc30b24f27。\n",
+   "tool_calls": [
+    {
+     "id": "call_cf90cc8b5a9249c9bd473c66",
+     "type": "function",
+     "function": {
+      "name": "check_task",
+      "arguments": "{\"task_id\": \"tsk_d7e0a2fc30b24f27\"}"
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_cf90cc8b5a9249c9bd473c66",
+   "content": "{\"ok\": true, \"verification\": {\"task_id\": \"tsk_d7e0a2fc30b24f27\", \"step_id\": \"ADJ-BAD-round4_r2\", \"status\": \"failed\", \"terminal\": true, \"verified\": false, \"reason\": \"status=failed;error_not_empty;exit_code_not_zero\", \"error\": {\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: real skill failure\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): __definitely_not_a_real_skill__\\r\\n\", \"stdout_bytes\": 118, \"stderr_bytes\": 0, \"output_truncated\": false}, \"result\": null, \"attempt\": 1, \"created_at\": 1795777132.6818867, \"finished_at\": 1795777141.0055065, \"attempt_history\": [{\"type\": \"failed\", \"ts\": 1795777141.0055065, \"detail\": {\"attempt\": 1, \"exit_code\": 1, \"safe\": true, \"error\": {\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: real skill failure\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): __definitely_not_a_real_skill__\\r\\n\", \"stdout_bytes\": 118, \"stderr_bytes\": 0, \"output_truncated\": false}}}]}, \"task\": {\"id\": \"tsk_d7e0a2fc30b24f27\", \"idempotency_key\": \"closure-adj-bad-round4_r2\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"real skill failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_device_id\": \"\", \"_step_id\": \"ADJ-BAD-round4_r2\"}, \"status\": \"failed\", \"attempt\": 1, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 1, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795777132.6818867, \"created_at\": 1795777132.6818867, \"updated_at\": 1795777141.0055065, \"started_at\": 1795777133.1886392, \"finished_at\": 1795777141.0055065, \"result_json\": null, \"error\": \"{\\\"exit_code\\\": 1, \\\"stderr\\\": \\\"\\\", \\\"stdout\\\": \\\"Query: real skill failure\\\\r\\\\n\\\\u001b[2;3mInitializing agent...\\\\u001b[0m\\\\r\\\\nError: Unknown skill(s): __definitely_not_a_real_skill__\\\\r\\\\n\\\", \\\"stdout_bytes\\\": 118, \\\"stderr_bytes\\\": 0, \\\"output_truncated\\\": false}\", \"step_id\": \"ADJ-BAD-round4_r2\"}, \"outbox\": [{\"delivery_id\": \"tsk_d7e0a2fc30b24f27:g1\", \"task_id\": \"tsk_d7e0a2fc30b24f27\", \"device_id\": \"\", \"payload_json\": {\"error\": {\"exit_code\": 1, \"stderr\": \"\", \"stdout\": \"Query: real skill failure\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\nError: Unknown skill(s): __definitely_not_a_real_skill__\\r\\n\", \"stdout_bytes\": 118, \"stderr_bytes\": 0, \"output_truncated\": false}, \"exit_code\": 1, \"unknown_side_effects\": false}, \"delivered\": 1, \"attempts\": 0, \"next_attempt_at\": 0.0, \"last_error\": null, \"dead_letter\": 0, \"created_at\": 1795777141.0055065, \"delivered_at\": 1795777142.323322}], \"note\": \"verification 为 status/error/exit_code/marker 四重校验；attempt_history 保留历史失败\"}"
+  }
+ ],
+ "stream": true,
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "ask_brain",
+    "description": "需要 OpenMuse 的 Agent 技能、文件/电脑操作或复杂多步推理时才调用。普通聊天、设备动作、已由系统提供的记忆都不要调用。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "question": {
+       "type": "string",
+       "description": "需要 OpenMuse 完成的完整任务"
+      }
+     },
+     "required": [
+      "question"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "forward_to_pc",
+    "description": "把任务交给『电脑助手』——它是另一个独立的会话（opencode），跑在用户的电脑上，不在你这里，你无法直接操作它。当用户要你找电脑助手做事、或要改这台机器人的代码/固件/配置、查电脑、建文件时，调用本工具，把需求提炼成一句简洁明确的任务放进 task。调用后系统会把任务送达电脑助手。这是转达的唯一方式——不调用本工具，任务就不会被送出去。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task": {
+       "type": "string",
+       "description": "提炼后的简洁任务，交给电脑助手执行"
+      }
+     },
+     "required": [
+      "task"
+     ]
+    }
+   }
+  }
+ ],
+ "tool_choice": "auto"
+}

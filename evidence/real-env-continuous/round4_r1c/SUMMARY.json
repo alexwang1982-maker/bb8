@@ -1,0 +1,111 @@
+{
+  "tag": "round4_r1c",
+  "bridge": "http://127.0.0.1:8910",
+  "results": [
+    {
+      "case": "T1-single-success",
+      "pass": false,
+      "external_evidence": [
+        "t1-single-submit.raw.json",
+        "t1-single-verify.raw.json",
+        "bridge.out.log:submit_task -> ... step=STEP-SINGLE-round4_r1c"
+      ],
+      "observed": {
+        "task_id": null,
+        "status": null,
+        "verified": null,
+        "exit_code": null,
+        "error": null,
+        "log_hits": 0,
+        "reply": "BB-8 收到，但 `document-to-action-items` 这个技能在我的技能库里不存在（可用的只有 meeting-action-items、weekly-review-planning、obsidian、document-to-action-items 这些里只有后三个能直接跑）。所以这个任务我没法照单提交成可执行步骤。\n\n你可以改一下，比如换成：\n- `meeting-acti"
+      },
+      "elapsed_s": 17.08
+    },
+    {
+      "case": "T2-single-failure",
+      "pass": false,
+      "external_evidence": [
+        "t2-failure-task.raw.json",
+        "t2-failure-brain.raw.json"
+      ],
+      "observed": {
+        "task_id": "tsk_a70c98642fd04300",
+        "status": "failed",
+        "verified": false,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: intentional real skill resolution failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 141,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        },
+        "outbox_count": 1,
+        "reply": "是"
+      },
+      "elapsed_s": 15.28
+    },
+    {
+      "case": "T3-two-step-sequence",
+      "pass": false,
+      "external_evidence": [
+        "t3-seq1-submit.raw.json",
+        "t3-seq2-submit.raw.json",
+        "t3-sequence-verify.raw.json",
+        "bridge.out.log:depends_on verified tsk_724345ca102948a6"
+      ],
+      "observed": {
+        "first_task": "tsk_724345ca102948a6",
+        "second_task": null,
+        "first_finished_at": 1795776752.2339988,
+        "second_created_at": 0,
+        "ordered": false,
+        "dependency_log_hits": 0,
+        "first_verified": true,
+        "second_verified": null,
+        "reply": "提交不了：我这里没有 submit_task 工具，也没有 document-to-action-items 技能，无法按那个流程提交第二步，更编不出 task_id。把要拆的那句话直接发我，我手写三条行动项给你。"
+      },
+      "elapsed_s": 39.99
+    },
+    {
+      "case": "T4-failure-adjustment",
+      "pass": false,
+      "external_evidence": [
+        "t4-failed-task.raw.json",
+        "t4-skip-success.raw.json",
+        "t4-adjusted-submit.raw.json",
+        "t4-adjusted-verify.raw.json",
+        "bridge.out.log:submit_task SKIP ADJ-A-round4_r1c"
+      ],
+      "observed": {
+        "failed_task": "tsk_d8d972244a6d4fd0",
+        "failed_status": "failed",
+        "successful_task": "tsk_7bc8ef7a2f344053",
+        "successful_task_count": 1,
+        "skip_log_hits": 0,
+        "adjusted_task": "tsk_89385f407969430d",
+        "adjusted_verified": true,
+        "ordered_after_success": true,
+        "failure_reply": "我这边查不到这个任务，也如实报告：\n\n- **status**：无记录（该任务 `tsk_d8d972244a6d4fd0` 不在我这边系统，无法查到）\n- **exit_code**：无法获取\n\n如果你能把它所在的系统/bridge 那边的查询结果贴给我，我可以帮你解读；或者告诉我要做什么，我直接在那边做。",
+        "adjust_reply": "已提交修正步骤 ADJ-B2-round4_r1c（task_id=tsk_89385f407969430d，依赖 tsk_7bc8ef7a2f344053 已验证），当前状态 running，尚未完成；等跑完再用 check_task 查四重校验结果。"
+      },
+      "elapsed_s": 91.5
+    },
+    {
+      "case": "T5-idempotency",
+      "pass": true,
+      "external_evidence": [
+        "t5-idempotency.raw.json"
+      ],
+      "observed": {
+        "task_id": "tsk_2a8fcf1a083c4e44",
+        "duplicate": true,
+        "tasks_for_step": 1,
+        "verified": true
+      },
+      "elapsed_s": 30.44
+    }
+  ],
+  "pass_all": false,
+  "judgement": "external Task Engine verify + result_outbox + task_events only"
+}

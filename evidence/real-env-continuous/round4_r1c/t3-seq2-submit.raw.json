@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 23.597,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-361d739a118440298f0a",
+    "object": "chat.completion",
+    "created": 1795776737,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "提交不了：我这里没有 submit_task 工具，也没有 document-to-action-items 技能，无法按那个流程提交第二步，更编不出 task_id。把要拆的那句话直接发我，我手写三条行动项给你。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

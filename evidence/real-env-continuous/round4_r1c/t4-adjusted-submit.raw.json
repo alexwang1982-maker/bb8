@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 13.512,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-4807ba464b214318ae62",
+    "object": "chat.completion",
+    "created": 1795776829,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "已提交修正步骤 ADJ-B2-round4_r1c（task_id=tsk_89385f407969430d，依赖 tsk_7bc8ef7a2f344053 已验证），当前状态 running，尚未完成；等跑完再用 check_task 查四重校验结果。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

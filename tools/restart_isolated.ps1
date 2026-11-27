@@ -61,7 +61,10 @@ $env:OPENMUSE_TASK_HERMES_CMD = 'G:\Hermes\home\bin\hermes.cmd'
 $env:OPENMUSE_TASK_HERMES_MODEL = 'agnes/agnes-3.0-flash'
 $env:OPENMUSE_TASK_RESULT_RECEIVER = 'http://127.0.0.1:8910/tasks/result/receiver'
 $env:OPENMUSE_TASK_OUTBOX_BACKOFF_BASE = '1'
-$env:OPENMUSE_TASK_TIMEOUT = '45'
+# Round4: 240s is a test-only timeout for real Hermes skills (direct probe ~22s;
+# in-task Chinese prompts plus retries exceeded the old 45s). Production untouched.
+$env:OPENMUSE_TASK_TIMEOUT = '240'
+$env:BB8_TASK_WAIT_TIMEOUT = '300'
 $env:BB8_INJECT_OPENMUSE_MEMORY = '1'
 $env:OPENMUSE_BRIDGE_CHAT_TIMEOUT = '35'
 $env:POWER_REMINDER_TURNS = '10000'

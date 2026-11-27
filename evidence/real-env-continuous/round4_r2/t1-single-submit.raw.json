@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 9.673,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-778144c757154e009e19",
+    "object": "chat.completion",
+    "created": 1795777036,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "没有 submit_task 工具可用。\n\n我如实说明：我这边可用的工具只有 ask_brain（转给 OpenMuse）和 forward_to_pc（转给电脑助手），没有 submit_task / check_task。系统要求\"即使认为技能不存在也必须先调用 submit_task\"，但我的工具列表里确实没有这个函数，无法凭空调用。\n\n如果这条任务其实是要 OpenMuse 用 document-to-action-items 技能来执行，我可以调 ask_brain 转过去。需要我这么办吗，坚哥？"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

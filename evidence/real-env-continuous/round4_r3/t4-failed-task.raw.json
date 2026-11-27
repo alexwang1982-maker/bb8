@@ -1,0 +1,177 @@
+{
+  "submit": {
+    "status": 202,
+    "elapsed_s": 0.064,
+    "raw": "{\"task\": {\"id\": \"tsk_a11beba6c6704f10\", \"idempotency_key\": \"closure-adj-bad-round4_r3\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"real skill failure\", \"skills\": \"__definitely_not_a_real_skill__\", \"run_budget\": 60, \"_device_id\": \"\", \"_step_id\": \"ADJ-BAD-round4_r3\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795777461.4461997, \"created_at\": 1795777461.4461997, \"updated_at\": 1795777461.4461997, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"ADJ-BAD-round4_r3\"}, \"duplicate\": false}",
+    "json": {
+      "task": {
+        "id": "tsk_a11beba6c6704f10",
+        "idempotency_key": "closure-adj-bad-round4_r3",
+        "kind": "hermes_cli",
+        "payload_json": {
+          "query": "real skill failure",
+          "skills": "__definitely_not_a_real_skill__",
+          "run_budget": 60,
+          "_device_id": "",
+          "_step_id": "ADJ-BAD-round4_r3"
+        },
+        "status": "queued",
+        "attempt": 0,
+        "max_attempts": 1,
+        "priority": 0,
+        "owner_pid": null,
+        "child_pid": null,
+        "generation": 0,
+        "retry_policy": "safe",
+        "lease_until": null,
+        "cancel_requested": 0,
+        "next_run_at": 1795777461.4461997,
+        "created_at": 1795777461.4461997,
+        "updated_at": 1795777461.4461997,
+        "started_at": null,
+        "finished_at": null,
+        "result_json": null,
+        "error": null,
+        "step_id": "ADJ-BAD-round4_r3"
+      },
+      "duplicate": false
+    },
+    "error": null
+  },
+  "verification": {
+    "task_id": "tsk_a11beba6c6704f10",
+    "step_id": "ADJ-BAD-round4_r3",
+    "status": "failed",
+    "terminal": true,
+    "verified": false,
+    "reason": "status=failed;error_not_empty;exit_code_not_zero",
+    "error": {
+      "exit_code": 1,
+      "stderr": "",
+      "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+      "stdout_bytes": 118,
+      "stderr_bytes": 0,
+      "output_truncated": false
+    },
+    "result": null,
+    "attempt": 1,
+    "created_at": 1795777461.4461997,
+    "finished_at": 1795777469.550683,
+    "attempt_history": [
+      {
+        "type": "failed",
+        "ts": 1795777469.550683,
+        "detail": {
+          "attempt": 1,
+          "exit_code": 1,
+          "safe": true,
+          "error": {
+            "exit_code": 1,
+            "stderr": "",
+            "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+            "stdout_bytes": 118,
+            "stderr_bytes": 0,
+            "output_truncated": false
+          }
+        }
+      }
+    ]
+  },
+  "outbox": [
+    {
+      "delivery_id": "tsk_a11beba6c6704f10:g1",
+      "task_id": "tsk_a11beba6c6704f10",
+      "device_id": "",
+      "payload_json": {
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        },
+        "exit_code": 1,
+        "unknown_side_effects": false
+      },
+      "delivered": 1,
+      "attempts": 0,
+      "next_attempt_at": 0.0,
+      "last_error": null,
+      "dead_letter": 0,
+      "created_at": 1795777469.550683,
+      "delivered_at": 1795777470.4090655
+    }
+  ],
+  "events": [
+    {
+      "type": "result_delivered",
+      "ts": 1795777470.4760842,
+      "detail_json": {
+        "delivery_id": "tsk_a11beba6c6704f10:g1"
+      }
+    },
+    {
+      "type": "failed",
+      "ts": 1795777469.550683,
+      "detail_json": {
+        "attempt": 1,
+        "exit_code": 1,
+        "safe": true,
+        "error": {
+          "exit_code": 1,
+          "stderr": "",
+          "stdout": "Query: real skill failure\r\n\u001b[2;3mInitializing agent...\u001b[0m\r\nError: Unknown skill(s): __definitely_not_a_real_skill__\r\n",
+          "stdout_bytes": 118,
+          "stderr_bytes": 0,
+          "output_truncated": false
+        }
+      }
+    },
+    {
+      "type": "claimed",
+      "ts": 1795777461.7654803,
+      "detail_json": {
+        "pid": 16172,
+        "generation": 1
+      }
+    },
+    {
+      "type": "submitted",
+      "ts": 1795777461.4597452,
+      "detail_json": {
+        "kind": "hermes_cli",
+        "device_id": "",
+        "retry_policy": "safe",
+        "step_id": "ADJ-BAD-round4_r3"
+      }
+    }
+  ],
+  "brain": {
+    "status": 200,
+    "elapsed_s": 6.965,
+    "raw": "[PRIVATE MEMORY REDACTED]",
+    "json": {
+      "id": "chatcmpl-231e2fff88424a898f4d",
+      "object": "chat.completion",
+      "created": 1795777476,
+      "model": "agnes-3.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "任务 tsk_a11beba6c6704f10 查询结果：\n\n- **status**: `failed`（终态）\n- **exit_code**: `1`\n- **error**: `Unknown skill(s): __definitely_not_a_real_skill__`\n- verified: `false`，原因是 status=failed、error 非空、exit_code 非 0\n\n即该任务失败，未通过四重校验。"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    "error": null
+  }
+}

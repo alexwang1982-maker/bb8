@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 8.016,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-db6f58856c2f403ab374",
+    "object": "chat.completion",
+    "created": 1795777052,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "查询没成功。工具返回说它那边没有 `check_task`，也没给出 `tsk_f0a0afecbe594587` 的 status、exit_code 或错误原因。\n\n所以目前只能如实说：任务状态未知、未确认成功。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

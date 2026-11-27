@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 51.324,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-41c988c13b044fa7940a",
+    "object": "chat.completion",
+    "created": 1795777104,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "坚哥，第二步已通过 OpenMuse 提交，任务ID：tsk_d340f1e9adb1445e 的下游步骤 SEQ2-round4_r2，幂等键 closure-seq2-round4_r2。系统会等上一步真实完成后再执行本步。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

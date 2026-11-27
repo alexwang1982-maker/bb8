@@ -1,0 +1,40 @@
+{
+  "status": 202,
+  "elapsed_s": 0.085,
+  "raw": "{\"task\": {\"id\": \"tsk_d340f1e9adb1445e\", \"idempotency_key\": \"closure-seq1-round4_r2\", \"kind\": \"hermes_cli\", \"payload_json\": {\"query\": \"请只用 document-to-action-items 把这句话整理成三条行动项，直接在回复中输出，不要写任何文件，也不要调用文件工具。第一行必须原样输出标记 BB8-ROUND4-R2-SEQ1-OK。\", \"skills\": \"document-to-action-items\", \"run_budget\": 60, \"_expected_marker\": \"BB8-ROUND4-R2-SEQ1-OK\", \"_device_id\": \"\", \"_step_id\": \"SEQ1-round4_r2\"}, \"status\": \"queued\", \"attempt\": 0, \"max_attempts\": 1, \"priority\": 0, \"owner_pid\": null, \"child_pid\": null, \"generation\": 0, \"retry_policy\": \"safe\", \"lease_until\": null, \"cancel_requested\": 0, \"next_run_at\": 1795777052.8440325, \"created_at\": 1795777052.8440325, \"updated_at\": 1795777052.8440325, \"started_at\": null, \"finished_at\": null, \"result_json\": null, \"error\": null, \"step_id\": \"SEQ1-round4_r2\"}, \"duplicate\": false}",
+  "json": {
+    "task": {
+      "id": "tsk_d340f1e9adb1445e",
+      "idempotency_key": "closure-seq1-round4_r2",
+      "kind": "hermes_cli",
+      "payload_json": {
+        "query": "请只用 document-to-action-items 把这句话整理成三条行动项，直接在回复中输出，不要写任何文件，也不要调用文件工具。第一行必须原样输出标记 BB8-ROUND4-R2-SEQ1-OK。",
+        "skills": "document-to-action-items",
+        "run_budget": 60,
+        "_expected_marker": "BB8-ROUND4-R2-SEQ1-OK",
+        "_device_id": "",
+        "_step_id": "SEQ1-round4_r2"
+      },
+      "status": "queued",
+      "attempt": 0,
+      "max_attempts": 1,
+      "priority": 0,
+      "owner_pid": null,
+      "child_pid": null,
+      "generation": 0,
+      "retry_policy": "safe",
+      "lease_until": null,
+      "cancel_requested": 0,
+      "next_run_at": 1795777052.8440325,
+      "created_at": 1795777052.8440325,
+      "updated_at": 1795777052.8440325,
+      "started_at": null,
+      "finished_at": null,
+      "result_json": null,
+      "error": null,
+      "step_id": "SEQ1-round4_r2"
+    },
+    "duplicate": false
+  },
+  "error": null
+}

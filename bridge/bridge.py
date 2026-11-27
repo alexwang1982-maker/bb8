@@ -256,6 +256,8 @@ SUBMIT_TASK_TOOL = {
         "description": (
             "提交一个真实的非物理技能步骤给 Task Engine 执行。"
             "只允许下面白名单里的安全技能；禁止电机、固件、安全锁。"
+            "多步骤时必须给 step_id，并在 depends_on 里写上一步的任务ID或步骤ID；"
+            "系统会等待依赖真实完成并校验结果后才提交本步。已成功步骤会被跳过。"
             "提交后系统返回真实任务 ID 和状态，不是你的主观判断。"
         ),
         "parameters": {
@@ -264,6 +266,9 @@ SUBMIT_TASK_TOOL = {
                 "query": {"type": "string", "description": "这一步要让技能真实完成的具体任务"},
                 "skill": {"type": "string", "description": "安全技能名：document-to-action-items（默认，写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian。旧名 note-taking 会自动映射到 document-to-action-items。"},
                 "idempotency_key": {"type": "string", "description": "幂等键；重复提交同一键不会重复执行"},
+                "step_id": {"type": "string", "description": "步骤ID；同一步骤已验证成功会被跳过，绝不重复执行"},
+                "depends_on": {"type": "string", "description": "依赖的任务ID或步骤ID；依赖未真实终态并校验通过前不会提交本步"},
+                "expected_marker": {"type": "string", "description": "结果中必须出现的标记，用于真实结果校验"},
             },
             "required": ["query"],
         },
@@ -274,10 +279,11 @@ CHECK_TASK_TOOL = {
     "type": "function",
     "function": {
         "name": CHECK_TASK_NAME,
-        "description": "按真实任务 ID 查询 Task Engine 状态和 outbox 执行结果。",
+        "description": "按真实任务 ID 查询 Task Engine 终态、四重成功校验、outbox 和历史 attempt 证据。",
         "parameters": {
             "type": "object",
-            "properties": {"task_id": {"type": "string"}},
+            "properties": {"task_id": {"type": "string"},
+                           "expected_marker": {"type": "string"}},
             "required": ["task_id"],
         },
     },
@@ -337,7 +343,12 @@ BPLUS_RULES = (
     "不许只在文字里说『提交了/完成了』。可用安全技能只有 document-to-action-items"
     "（默认写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian；"
     "不要提交 note-taking/memory/web/research 这类目录名，它们不是可执行技能。"
-    "任务结果以工具返回为准；失败就说失败，并经用户同意后再换安全技能重试。\n"
+    "多步骤任务必须用 step_id 标识每一步，用 depends_on 写上一步的任务ID或步骤ID；"
+    "系统会等待依赖进入真实终态并校验通过后才提交下一步。已验证成功的步骤不会重复执行。"
+    "技能是否可用一律由 submit_task 工具判定：即使你认为技能不存在，也必须先调用工具，不许只凭记忆回答。"
+    "查询任务必须调用 check_task，不许凭记忆说查不到。"
+    "只有 status=succeeded、error 为空、result_json.exit_code=0、结果标记校验通过才算完成；"
+    "失败就说失败，并经用户同意后再调整后续步骤。任务结果以工具返回为准。\n"
 )
 
 
@@ -2004,6 +2015,9 @@ class Handler(BaseHTTPRequestHandler):
                     args = {}
                 if name == SUBMIT_TASK_NAME:
                     query = str(args.get("query") or "").strip()
+                    step_id = str(args.get("step_id") or "").strip()
+                    depends_on = str(args.get("depends_on") or "").strip()
+                    marker = str(args.get("expected_marker") or "").strip()
                     requested_skill = str(args.get("skill") or "document-to-action-items").strip() \
                         or "document-to-action-items"
                     allowed, skill = safe_task_skill(requested_skill)
@@ -2013,37 +2027,94 @@ class Handler(BaseHTTPRequestHandler):
                     elif not query:
                         tool_result = "blocked: query 为空，未提交任务"
                     else:
-                        idem = str(args.get("idempotency_key") or "").strip()
-                        if not idem:
-                            idem = hashlib.sha256(
-                                (query + "|" + skill + "|" + key).encode("utf-8")).hexdigest()[:20]
-                        try:
-                            r = task_engine.submit(
-                                idem, "hermes_cli",
-                                {"query": query, "skills": skill, "run_budget": 40},
-                                device_id=key, max_attempts=2, retry_policy="safe")
-                            tid_sub = str((r.get("task") or {}).get("id") or "")
-                            st_sub = task_engine.status(tid_sub) or {}
+                        # 已验证成功的步骤绝不重复执行（复用 tasks 表，不建 ledger）。
+                        done = task_engine.find_step_success(step_id, marker) if step_id else None
+                        if done:
                             tool_result = json.dumps({
-                                "ok": True, "submitted_to_task_engine": True,
-                                "duplicate": bool(r.get("duplicate")),
-                                "task_id": tid_sub, "status": st_sub.get("status"),
-                                "requested_skill": requested_skill,
-                                "actual_hermes_skill": skill,
-                                "note": "已真实提交；用 check_task 查询执行结果，不许自行宣告完成",
-                            }, ensure_ascii=False)
-                            print("[bridge] submit_task -> %s skill=%s (requested=%s) duplicate=%s" %
-                                  (tid_sub, skill, requested_skill, r.get("duplicate")), flush=True)
-                        except Exception as exc:
-                            tool_result = "error: submit failed: %r" % (exc,)
+                                "ok": True, "skipped": True,
+                                "reason": "step_already_verified_succeeded",
+                                "step_id": step_id, "task_id": done["task_id"],
+                                "status": done["status"], "verified": True,
+                                "result": done.get("result"),
+                                "note": "该步骤已真实成功，未重复提交；继续下一步",
+                            }, ensure_ascii=False)[:6000]
+                            print("[bridge] submit_task SKIP %s -> %s" %
+                                  (step_id, done["task_id"]), flush=True)
+                        else:
+                            dep_v = None
+                            dep_problem = None
+                            if depends_on:
+                                dep_id = depends_on
+                                if not dep_id.startswith("tsk_"):
+                                    dep_task = task_engine.find_step(dep_id)
+                                    dep_id = str((dep_task or {}).get("id") or "")
+                                if not dep_id:
+                                    dep_problem = {"reason": "dependency_not_found",
+                                                   "depends_on": depends_on}
+                                else:
+                                    deadline = time.time() + float(
+                                        os.environ.get("BB8_TASK_WAIT_TIMEOUT", "300"))
+                                    while True:
+                                        dep_v = task_engine.verified_status(dep_id)
+                                        if dep_v["terminal"] or time.time() >= deadline:
+                                            break
+                                        time.sleep(2)
+                                    if not dep_v["terminal"]:
+                                        dep_problem = {"reason": "dependency_not_terminal_after_wait",
+                                                       "dependency": dep_v}
+                                    elif not dep_v["verified"]:
+                                        dep_problem = {"reason": "dependency_failed_verification",
+                                                       "dependency": dep_v}
+                                    else:
+                                        print("[bridge] depends_on verified %s status=%s" %
+                                              (dep_id, dep_v["status"]), flush=True)
+                            if dep_problem:
+                                tool_result = json.dumps({
+                                    "ok": False, "blocked": True, "step_id": step_id,
+                                    "depends_on": depends_on, **dep_problem,
+                                    "note": "依赖未真实成功，本步未提交",
+                                }, ensure_ascii=False)[:6000]
+                            else:
+                                idem = str(args.get("idempotency_key") or "").strip()
+                                if not idem:
+                                    idem = hashlib.sha256(
+                                        (query + "|" + skill + "|" + step_id + "|" + key).encode("utf-8")
+                                    ).hexdigest()[:20]
+                                payload = {"query": query, "skills": skill, "run_budget": 40}
+                                if marker:
+                                    payload["_expected_marker"] = marker
+                                try:
+                                    r = task_engine.submit(
+                                        idem, "hermes_cli", payload, device_id=key,
+                                        max_attempts=2, retry_policy="safe", step_id=step_id)
+                                    tid_sub = str((r.get("task") or {}).get("id") or "")
+                                    st_sub = task_engine.status(tid_sub) or {}
+                                    tool_result = json.dumps({
+                                        "ok": True, "submitted_to_task_engine": True,
+                                        "duplicate": bool(r.get("duplicate")),
+                                        "task_id": tid_sub, "status": st_sub.get("status"),
+                                        "step_id": step_id, "depends_on": depends_on,
+                                        "dependency_verified": bool(dep_v),
+                                        "expected_marker": marker,
+                                        "requested_skill": requested_skill,
+                                        "actual_hermes_skill": skill,
+                                        "note": "已真实提交；用 check_task 查询四重校验结果，不许自行宣告完成",
+                                    }, ensure_ascii=False)
+                                    print("[bridge] submit_task -> %s skill=%s step=%s dep=%s duplicate=%s" %
+                                          (tid_sub, skill, step_id, depends_on, r.get("duplicate")),
+                                          flush=True)
+                                except Exception as exc:
+                                    tool_result = "error: submit failed: %r" % (exc,)
                 else:
                     tid_chk = str(args.get("task_id") or "").strip()
+                    marker_chk = str(args.get("expected_marker") or "").strip()
+                    v_chk = task_engine.verified_status(tid_chk, marker_chk)
                     st_chk = task_engine.status(tid_chk)
                     ob_chk = task_engine.outbox(tid_chk)
                     tool_result = json.dumps({
                         "ok": st_chk is not None,
-                        "task": st_chk, "outbox": ob_chk,
-                        "note": "以上为 SQLite 任务真源与 outbox 原始记录",
+                        "verification": v_chk, "task": st_chk, "outbox": ob_chk,
+                        "note": "verification 为 status/error/exit_code/marker 四重校验；attempt_history 保留历史失败",
                     }, ensure_ascii=False)[:6000]
                     print("[bridge] check_task -> %s status=%s" %
                           (tid_chk, (st_chk or {}).get("status")), flush=True)

@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 9.45,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-07736ae3b20f4b528e2c",
+    "object": "chat.completion",
+    "created": 1795777162,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "修正步骤已真实提交，任务 tsk_2648debaa7674b39，状态 queued，依赖已校验。需要用 check_task 查真实结果。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}

@@ -103,7 +103,8 @@ def init_schema() -> None:
             started_at REAL,
             finished_at REAL,
             result_json TEXT,
-            error TEXT
+            error TEXT,
+            step_id TEXT
         );
         CREATE TABLE IF NOT EXISTS task_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,6 +127,7 @@ def init_schema() -> None:
             delivered_at REAL
         );
         CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, next_run_at, priority);
+        CREATE INDEX IF NOT EXISTS idx_tasks_step ON tasks(step_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, id);
         """)
         # Forward-compatible migration for DBs created by stage 1.
@@ -133,6 +135,8 @@ def init_schema() -> None:
         for name, ddl in {
             "child_pid": "INTEGER", "generation": "INTEGER NOT NULL DEFAULT 0",
             "retry_policy": "TEXT NOT NULL DEFAULT 'unknown'",
+            # 2026-11-27 round4: step identity lives in the existing tasks table.
+            "step_id": "TEXT",
         }.items():
             if name not in task_cols:
                 c.execute(f"ALTER TABLE tasks ADD COLUMN {name} {ddl}")
@@ -759,22 +763,27 @@ def recover() -> int:
 
 def submit(idempotency_key: str, kind: str, payload: dict, device_id: str = "",
            priority: int = 0, max_attempts: int | None = None,
-           retry_policy: str = "unknown") -> dict:
+           retry_policy: str = "unknown", step_id: str = "") -> dict:
     now = time.time()
     tid = "tsk_" + uuid.uuid4().hex[:16]
     attempts = max_attempts or MAX_ATTEMPTS
     policy = retry_policy if retry_policy in RETRY_POLICIES else "unknown"
     p = dict(payload or {})
     p["_device_id"] = device_id
+    sid = str(step_id or "").strip()
+    if sid:
+        p["_step_id"] = sid
     with _tx() as c:
         existing = c.execute("SELECT * FROM tasks WHERE idempotency_key=?", (idempotency_key,)).fetchone()
         if existing:
             return {"task": _row_dict(existing), "duplicate": True}
         c.execute("""INSERT INTO tasks(id,idempotency_key,kind,payload_json,status,max_attempts,
-                     priority,retry_policy,next_run_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                     priority,retry_policy,next_run_at,created_at,updated_at,step_id)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                   (tid, idempotency_key, kind, json.dumps(p, ensure_ascii=False), QUEUED,
-                   attempts, int(priority), policy, now, now, now))
-        _event_tx(c, tid, "submitted", {"kind": kind, "device_id": device_id, "retry_policy": policy})
+                   attempts, int(priority), policy, now, now, now, sid or None))
+        _event_tx(c, tid, "submitted", {"kind": kind, "device_id": device_id,
+                                        "retry_policy": policy, "step_id": sid or None})
         row = c.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
     return {"task": _row_dict(row), "duplicate": False}
 
@@ -782,6 +791,90 @@ def submit(idempotency_key: str, kind: str, payload: dict, device_id: str = "",
 def status(task_id: str) -> dict | None:
     with _connect() as c:
         return _row_dict(c.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone())
+
+
+def find_step(step_id: str) -> dict | None:
+    """Return the newest task recorded for a step_id (reuses the tasks table; no ledger)."""
+    sid = str(step_id or "").strip()
+    if not sid:
+        return None
+    with _connect() as c:
+        row = c.execute("SELECT * FROM tasks WHERE step_id=? ORDER BY created_at DESC LIMIT 1",
+                        (sid,)).fetchone()
+    return _row_dict(row) if row else None
+
+
+def find_step_success(step_id: str, marker: str = "") -> dict | None:
+    """Find an already verified-successful task for a step, so adjustments never replay it."""
+    sid = str(step_id or "").strip()
+    if not sid:
+        return None
+    with _connect() as c:
+        rows = c.execute("SELECT id FROM tasks WHERE step_id=? ORDER BY created_at ASC",
+                         (sid,)).fetchall()
+    for r in rows:
+        v = verified_status(r["id"], marker)
+        if v["verified"]:
+            return v
+    return None
+
+
+def verified_status(task_id: str, marker: str = "") -> dict:
+    """External-fact judgement for a task.
+
+    A task counts as verified success ONLY when all four hold:
+      status=succeeded, current error empty, result_json.exit_code==0,
+      and the expected result marker is present in stdout.
+    Historical attempt failures stay in task_events (attempt_error_archived /
+    retry_scheduled / failed) and are returned as `attempt_history`.
+    """
+    tid = str(task_id or "").strip()
+    t = status(tid)
+    if not t:
+        return {"task_id": tid, "status": "", "terminal": False, "verified": False,
+                "reason": "unknown_task", "error": None, "result": None,
+                "attempt_history": []}
+    err = t.get("error")
+    if isinstance(err, str):
+        try:
+            err = json.loads(err)
+        except Exception:
+            err = {"raw": err}
+    result = t.get("result_json")
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except Exception:
+            result = None
+    payload = t.get("payload_json")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+    expected = str(marker or (payload or {}).get("_expected_marker") or "").strip()
+    st = str(t.get("status") or "")
+    terminal = st in (SUCCEEDED, FAILED, UNKNOWN, CANCELLED)
+    reasons = []
+    if st != SUCCEEDED:
+        reasons.append("status=" + st)
+    if err:
+        reasons.append("error_not_empty")
+    if not isinstance(result, dict) or result.get("exit_code") != 0:
+        reasons.append("exit_code_not_zero")
+    if expected and expected not in str((result or {}).get("stdout") or ""):
+        reasons.append("marker_missing:" + expected)
+    hist = []
+    for e in events(tid, limit=100):
+        if e.get("type") in ("retry_scheduled", "attempt_error_archived", "failed",
+                             "unknown", "cancelled", "attempt_failed"):
+            hist.append({"type": e.get("type"), "ts": e.get("ts"), "detail": e.get("detail_json")})
+    return {"task_id": tid, "step_id": t.get("step_id") or "", "status": st,
+            "terminal": terminal, "verified": not reasons,
+            "reason": "ok" if not reasons else ";".join(reasons),
+            "error": err, "result": result, "attempt": t.get("attempt"),
+            "created_at": t.get("created_at"), "finished_at": t.get("finished_at"),
+            "attempt_history": hist}
 
 
 def list_tasks(limit: int = 50, status_filter: str = "") -> list[dict]:
@@ -1342,21 +1435,41 @@ def _finish(task_id: str, generation: int, rc: int | None, cap: dict,
                       (CANCELLED, now, now, task_id, RUNNING, generation))
             _event_tx(c, task_id, "cancelled_checkpoint", {"exit_code": rc})
             return
-        if rc == 0:
+        # 2026-11-27 round4: normal exit alone is not success. When the caller supplied
+        # an expected marker, the real child output must contain it before SUCCEEDED.
+        expected_marker = ""
+        try:
+            _payload = json.loads(t["payload_json"] or "{}")
+            expected_marker = str(_payload.get("_expected_marker") or "").strip()
+        except Exception:
+            pass
+        marker_error = ("result_marker_missing:" + expected_marker
+                        if rc == 0 and expected_marker and expected_marker not in cap["stdout"] else "")
+        if rc == 0 and not marker_error:
             result = {"stdout": cap["stdout"][-RESULT_STDOUT_TAIL:],
                       "stderr": cap["stderr"][-RESULT_STDERR_TAIL:], "exit_code": rc, **meta}
-            c.execute("UPDATE tasks SET status=?,result_json=?,finished_at=?,updated_at=?,owner_pid=NULL,"
-                      "child_pid=NULL,lease_until=NULL WHERE id=?",
+            # 2026-11-27 round4: a retry that finally succeeds must clear the CURRENT
+            # error field, but the previous attempt's timeout/failure stays in events.
+            archived = None
+            if t and t["error"]:
+                archived = t["error"]
+                _event_tx(c, task_id, "attempt_error_archived",
+                          {"attempt_before": max(0, int(t["attempt"] or 0) - 1),
+                           "error": archived})
+            c.execute("UPDATE tasks SET status=?,result_json=?,error=NULL,finished_at=?,updated_at=?,"
+                      "owner_pid=NULL,child_pid=NULL,lease_until=NULL WHERE id=?",
                       (SUCCEEDED, json.dumps(result, ensure_ascii=False), now, now, task_id))
             # Test-only crash point: task UPDATE is deliberately not committed before outbox.
             if TEST_PAUSE_BEFORE_OUTBOX:
                 Path(str(DB_PATH) + ".pause").write_text(task_id, encoding="utf-8")
                 time.sleep(60)
             _write_outbox_tx(c, t, result, generation)
-            _event_tx(c, task_id, "succeeded", {"exit_code": rc})
+            _event_tx(c, task_id, "succeeded", {"exit_code": rc, "error_archived": bool(archived)})
             return
         err = {"exit_code": rc, "stderr": cap["stderr"][-RESULT_STDERR_TAIL:],
                "stdout": cap["stdout"][-RESULT_STDERR_TAIL:], **meta}
+        if marker_error:
+            err["error"] = marker_error
         safe = (not spawned) or t["retry_policy"] == "safe"
         attempt = int(t["attempt"]) + 1
         if safe and attempt < int(t["max_attempts"]):
@@ -1364,14 +1477,16 @@ def _finish(task_id: str, generation: int, rc: int | None, cap: dict,
             c.execute("UPDATE tasks SET status=?,attempt=?,error=?,next_run_at=?,updated_at=?,"
                       "owner_pid=NULL,child_pid=NULL,lease_until=NULL WHERE id=?",
                       (RETRY_WAIT, attempt, json.dumps(err, ensure_ascii=False), now + delay, now, task_id))
-            _event_tx(c, task_id, "retry_scheduled", {"attempt": attempt, "delay": delay, "exit_code": rc})
+            _event_tx(c, task_id, "retry_scheduled",
+                      {"attempt": attempt, "delay": delay, "exit_code": rc, "error": err})
         else:
             final = FAILED if safe else UNKNOWN
             c.execute("UPDATE tasks SET status=?,attempt=?,error=?,finished_at=?,updated_at=?,owner_pid=NULL,"
                       "child_pid=NULL,lease_until=NULL WHERE id=?",
                       (final, attempt, json.dumps(err, ensure_ascii=False), now, now, task_id))
             _write_outbox_tx(c, t, {"error": err, "exit_code": rc, "unknown_side_effects": not safe}, generation)
-            _event_tx(c, task_id, final, {"attempt": attempt, "exit_code": rc, "safe": safe})
+            _event_tx(c, task_id, final,
+                      {"attempt": attempt, "exit_code": rc, "safe": safe, "error": err})
 
 
 def _worker_loop() -> None:
@@ -1457,7 +1572,8 @@ def handle_request(method: str, path: str, body: dict | None = None) -> tuple[in
                 return 400, {"error": "idempotency_key required"}
             r = submit(key, str(body.get("kind") or "hermes_cli"), body.get("payload") or {},
                        str(body.get("device_id") or ""), int(body.get("priority") or 0),
-                       body.get("max_attempts"), str(body.get("retry_policy") or "unknown"))
+                       body.get("max_attempts"), str(body.get("retry_policy") or "unknown"),
+                       str(body.get("step_id") or ""))
             return 202, r
         if method == "POST" and p == "/tasks/cancel":
             return 200, cancel(str(body.get("id") or ""))
@@ -1470,6 +1586,13 @@ def handle_request(method: str, path: str, body: dict | None = None) -> tuple[in
         if method == "GET" and p == "/tasks/status":
             t = status(str((q.get("id") or [""])[0]))
             return (200, {"task": t}) if t else (404, {"error": "unknown task"})
+        if method == "GET" and p == "/tasks/verify":
+            v = verified_status(str((q.get("id") or [""])[0]),
+                                str((q.get("marker") or [""])[0]))
+            return 200, {"verification": v}
+        if method == "GET" and p == "/tasks/find-step":
+            t = find_step(str((q.get("step_id") or [""])[0]))
+            return (200, {"task": t}) if t else (404, {"error": "unknown step"})
         if method == "GET" and p == "/tasks/list":
             return 200, {"tasks": list_tasks(int((q.get("limit") or ["50"])[0]),
                                              str((q.get("status") or [""])[0]))}
