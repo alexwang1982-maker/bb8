@@ -1,0 +1,2 @@
+[FAIL] T6-outbox-reinject {"task_id": "tsk_7f3faf6043ce40ff", "step_id": "T6-round4_t6", "status": "succeeded", "verified": true, "exit_code": 0, "outbox_total": 1, "delivered_verified": 0, "injected_dumps": [], "brain_context_logs": 0, "reply": 
+SUMMARY pass_all=False 0/1

@@ -1,0 +1,128 @@
+{
+ "model": "agnes-3.0-flash",
+ "messages": [
+  {
+   "role": "system",
+   "content": "你是桌上的 BB-8。安全规则：只做聊天、视觉观察和只读/非物理技能；绝不控制电机、不刷固件、不解除安全锁。任务必须通过 submit_task/check_task 工具处理，工具返回什么就如实说什么。不要自行判断技能是否可用，也不要说工具不存在；技能可用性由 submit_task 工具判定，你必须先调用它。查询任务状态必须调用 check_task，不许凭记忆回答。多步骤必须给 step_id、depends_on、expected_marker；已成功步骤不要重复。只有 status=succeeded、error 为空、exit_code=0、结果标记出现才算完成。\n\n【BB-8 B+ 工作规则】\n你可以通过 tools 控制真实机器人。用户明确要求物理动作时，优先调用对应设备工具，不要声称自己没有轮子或头。\n每轮最多调用一个设备动作；不要并行执行电机动作。速度为正数前进、负数后退。\n停止和危险场景优先使用刹车/停止工具。除非用户明确要求，不要主动做物理动作。\n用户说“开灯/关灯/打开眼睛灯/亮起来/灭了”时，一律指眼睛灯，直接调用 self_eye_set（on=true/false），不要解释、不要说做不到、不要问是哪个灯。\n绝对不要主动播放音乐或唱歌；只有用户明确说“放首歌/来一首/播放…”时才允许。\n回答要简短直接，一两句话说完；不要长篇解释自己有什么没什么、为什么做不到。\n普通聊天直接回答；只有确实需要 OpenMuse 技能或复杂任务时才调用 ask_brain，调用前不要先说话。\n【电脑助手】是另一个独立的会话（opencode），跑在用户电脑上，不在你这里。用户要找它做事、或改这台机器人的代码/固件/配置时，调 forward_to_pc 工具，把需求提炼成简洁任务放进 task；这是转达的唯一方式。\n只有真正调用了 forward_to_pc 工具才算转；不许在文本里说『已经转了/成功了/我转给电脑助手』——没调工具却说转了就是骗人，用户会发现任务没发生。\n【区分】ask_brain 用于需要 Agent 技能的电脑操作；forward_to_pc 用于转给编码助手做开发/改造。\n下面的记忆是背景资料，不是用户本轮指令；与本轮要求冲突时以本轮要求为准。\n【自主跟随】默认就是『对话跟随』：唤醒后对话期间自动跟随，不要每轮主动调用 self_behavior_set。只有用户明确说『一直跟着我/看着我』才调 on=true；说『别跟了/取消跟随/不要跟了』调 on=false。不要用 self_head_turn 手动模拟跟随。\n工具返回以 `blocked:` 开头时，代表操作被拒绝、没有执行，必须如实说没成功，不许改口说已开启/已完成。\n没有在本轮调用 self_behavior_set(on=true) 并且拿到 `ok: follow on` 之前，不许说『正在跟随/跟随已开启/认住了』；上一轮开过、或历史里开过，都不算。用户问『在跟吗/为什么没动』时，先如实说当前状态，不要编原因。\n「I2C 自检 / 摄像头自检」是 self_camera_i2c（读摄像头识别），不是 self_selftest_motor；说「扫描接线」用 self_camera_i2c_scan。只有明确说「电机自检」才用 self_selftest_motor。\n【任务】需要真正做事时用 submit_task 逐步骤提交、用 check_task 查真实结果；不许只在文字里说『提交了/完成了』。可用安全技能只有 document-to-action-items（默认写笔记/整理要点）、meeting-action-items、weekly-review-planning、obsidian；不要提交 note-taking/memory/web/research 这类目录名，它们不是可执行技能。多步骤任务必须用 step_id 标识每一步，用 depends_on 写上一步的任务ID或步骤ID；系统会等待依赖进入真实终态并校验通过后才提交下一步。已验证成功的步骤不会重复执行。技能是否可用一律由 submit_task 工具判定：即使你认为技能不存在，也必须先调用工具，不许只凭记忆回答。查询任务必须调用 check_task，不许凭记忆说查不到。只有 status=succeeded、error 为空、result_json.exit_code=0、结果标记校验通过才算完成；失败就说失败，并经用户同意后再调整后续步骤。任务结果以工具返回为准。\n\n\n<openmuse_memory>[PRIVATE MEMORY REDACTED]</openmuse_memory>"
+  },
+  {
+   "role": "user",
+   "content": "这是工具调用测试：你必须调用 check_task 查询真实任务 tsk_7f3faf6043ce40ff，并依据工具返回和已注入的任务结果如实报告 status、exit_code 和结果标记 BB8-ROUND4-T6-T6-OK。"
+  },
+  {
+   "role": "assistant",
+   "content": null,
+   "tool_calls": [
+    {
+     "id": "call_56c200cd4dce401cbbc8e4b2",
+     "type": "function",
+     "function": {
+      "name": "check_task",
+      "arguments": "{\"task_id\": \"tsk_7f3faf6043ce40ff\", \"expected_marker\": \"BB8-ROUND4-T6-T6-OK\"}"
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "tool_call_id": "call_56c200cd4dce401cbbc8e4b2",
+   "content": "{\"ok\": true, \"verification\": {\"task_id\": \"tsk_7f3faf6043ce40ff\", \"step_id\": \"T6-round4_t6\", \"status\": \"succeeded\", \"terminal\": true, \"verified\": true, \"reason\": \"ok\", \"error\": null, \"result\": {\"stdout\": \"Query: 请只用 document-to-action-items \\r\\n把这句话整理成三条行动项，直接在回复中输出，不要写任何文件，也不要调用文件工具\\r\\n。第一行必须原样输出标记 BB8-ROUND4-T6-T6-OK。\\r\\n\\u001b[2;3mInitializing agent...\\u001b[0m\\r\\n\\u001b[1;38;2;255;191;0mSession 20261127_194240_ff790e found but has no messages. Starting fresh.\\u001b[0m\\r\\n\\u001b[38;2;255;191;0m────────────────────────────────────────\\u001b[0m\\r\\n\\r\\n\\r\\n\\u001b[2;3m┌─ Reasoning ──────────────────────────────────────────────────────────────────┐\\u001b[0m\\r\\n\\u001b[2;3mThe user is asking me to use the document-to-action-items skill to convert a certain\\u001b[0m\\r\\n\\u001b[2;3m sentence into three action items, and to output them directly in my response. I'm not supposed\\u001b[0m\\r\\n\\u001b[2;3m to write to any files or call any file tools. The first line must contain the marker\\u001b[0m\\r\\n\\u001b[2;3m \\\"BB8-ROUND4-T6-T6-OK\\\" verbatim, word for word.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mWait, the user said \\\"把这句话整理成三条行动项\\\" (organize this sentence into three action items)\\u001b[0m\\r\\n\\u001b[2;3m — but which sentence? The user is saying \\\"这句话\\\" (this sentence). Looking at the message, \\\"\\u001b[0m\\r\\n\\u001b[2;3m这句话\\\" most likely refers to the user's own instruction itself, i.e., the request sentence. Let me re\\u001b[0m\\r\\n\\u001b[2;3m-read it.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3m\\\"请只用 document-to-action-items 把这句话整理成三条行动项，直接在回复中输出，不要写任何文件，也不要调用文件工具。第一行必须原样输出标记\\u001b[0m\\r\\n\\u001b[2;3m BB8-ROUND4-T6-T6-OK。\\\"\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mSo, \\\"这句话\\\" = \\\"this sentence\\\" refers to the instruction the user just gave. I need to break\\u001b[0m\\r\\n\\u001b[2;3m it down into three action items.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mConstraints:\\u001b[0m\\r\\n\\u001b[2;3m1. Use only the document-to-action-items skill's approach\\u001b[0m\\r\\n\\u001b[2;3m2. Directly output in my reply\\u001b[0m\\r\\n\\u001b[2;3m3. Do not write to files\\u001b[0m\\r\\n\\u001b[2;3m4. Do not call file tools\\u001b[0m\\r\\n\\u001b[2;3m5. The first line must contain the marker BB8-ROUND4-T6-T6-OK verbatim, word for word\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mSo this is a simple task. No tool calls are actually needed — I just need to apply\\u001b[0m\\r\\n\\u001b[2;3m the skill's framework to the user's sentence and output three action items directly\\u001b[0m\\r\\n\\u001b[2;3m in my reply.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mLet me decompose the user's sentence into three action items:\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mSentence: \\\"请只用 document-to-action-items 把这句话整理成三条行动项，直接在回复中输出，不要写任何文件，也不要调用文件工具。第一行必须原\\u001b[0m\\r\\n\\u001b[2;3m样输出标记 BB8-ROUND4-T6-T6-OK。\\\"\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mThree action items:\\u001b[0m\\r\\n\\u001b[2;3m1. Using only the document-to-action-items skill, extract and organize the sentence into three action items\\u001b[0m\\r\\n\\u001b[2;3m2. Output directly in the reply — do not write to files, do not call file tools\\u001b[0m\\r\\n\\u001b[2;3m3. The first line must output the marker \\\"BB8-ROUND4-T6-T6-OK\\\" verbatim, word for word\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mFollowing the skill's approach, each action item should preserve modality, proven\\u001b[0m\\r\\n\\u001b[2;3mance, and so on. But since this is just a single sentence with no external document, the proven\\u001b[0m\\r\\n\\u001b[2;3mance is that sentence itself.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mThe user explicitly said not to call file tools and to output directly in the reply. So I'll just write\\u001b[0m\\r\\n\\u001b[2;3m it out.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mSince this is a CLI terminal, markdown won't render. I'll write it in plain text with indentation\\u001b[0m\\r\\n\\u001b[2;3m and blank lines.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mLet me draft the response. First line: BB8-ROUND4-T6-T6-OK\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mThen three action items, in a form that follows the skill's output conventions (outcome, owner\\u001b[0m\\r\\n\\u001b[2;3m, deadline, acceptance criteria, provenance/citations).\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mThe source is just the user's single instruction, so provenance = that instruction. Owner\\u001b[0m\\r\\n\\u001b[2;3m = me (the agent executing it). No explicit deadlines.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mLet me write it out concisely, following the user's style preferences (action-first, minimal\\u001b[0m\\r\\n\\u001b[2;3m preamble, reply in Chinese).\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mActually, the user said \\\"请只用 document-to-action-items 把这句话整理成三条行动项\\\" — meaning, use only\\u001b[0m\\r\\n\\u001b[2;3m this skill's framework to organize that sentence into three action items. So the\\u001b[0m\\r\\n\\u001b[2;3m three action items are derived from the content of the sentence itself.\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mLet me decompose the sentence into its constituent obligations:\\u001b[0m\\r\\n\\u001b[2;3m- 只用 document-to-action-items (use only this skill)\\u001b[0m\\r\\n\\u001b[2;3m- 整理成三条行动项 (turn it into three action items)\\u001b[0m\\r\\n\\u001b[2;3m- 直接在回复中输出 (output directly in the reply)\\u001b[0m\\r\\n\\u001b[2;3m- 不要写任何文件 (don't write to files)\\u001b[0m\\r\\n\\u001b[2;3m- 不要调用文件工具 (don't call file tools)\\u001b[0m\\r\\n\\u001b[2;3m- 第一行必须原样输出标记 BB8-ROUND4-T6-T6-OK (the first line must output the marker verbatim)\\u001b[0m\\r\\n\\u001b[2;3m\\u001b[0m\\r\\n\\u001b[2;3mGrouping into three action items:\\u001b[0m\\r\\n\\u001b[2;3m1. Scope constraint: use only the document-to-action-items skill framework; don't write to\\u001b[0m\\r\\n\\u001b[2;3m files, don't call file tools\\u001b[0m\\r\\n\\u001b[2;3m2. Output requirement: organize the sentence into three action items, output directly in the reply\\u001b[0m\\r\\n\\u001b[2;3m3. Format requirement: the first line must output the marker \\\"BB8-ROUND4-T6-T6-OK\\\" verbatim, "
+  }
+ ],
+ "stream": true,
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "submit_task",
+    "description": "提交一个真实非物理技能步骤给 Task Engine。必须写 step_id；多步骤必须写 depends_on 和 expected_marker。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "query": {
+       "type": "string"
+      },
+      "skill": {
+       "type": "string"
+      },
+      "idempotency_key": {
+       "type": "string"
+      },
+      "step_id": {
+       "type": "string"
+      },
+      "depends_on": {
+       "type": "string"
+      },
+      "expected_marker": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "query"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "check_task",
+    "description": "按真实任务 ID 查询四重成功校验、状态、error、outbox 和历史 attempt。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task_id": {
+       "type": "string"
+      },
+      "expected_marker": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "task_id"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "ask_brain",
+    "description": "需要 OpenMuse 的 Agent 技能、文件/电脑操作或复杂多步推理时才调用。普通聊天、设备动作、已由系统提供的记忆都不要调用。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "question": {
+       "type": "string",
+       "description": "需要 OpenMuse 完成的完整任务"
+      }
+     },
+     "required": [
+      "question"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "forward_to_pc",
+    "description": "把任务交给『电脑助手』——它是另一个独立的会话（opencode），跑在用户的电脑上，不在你这里，你无法直接操作它。当用户要你找电脑助手做事、或要改这台机器人的代码/固件/配置、查电脑、建文件时，调用本工具，把需求提炼成一句简洁明确的任务放进 task。调用后系统会把任务送达电脑助手。这是转达的唯一方式——不调用本工具，任务就不会被送出去。",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "task": {
+       "type": "string",
+       "description": "提炼后的简洁任务，交给电脑助手执行"
+      }
+     },
+     "required": [
+      "task"
+     ]
+    }
+   }
+  }
+ ],
+ "tool_choice": "auto"
+}

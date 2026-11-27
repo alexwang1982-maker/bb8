@@ -1,0 +1,27 @@
+{
+  "status": 200,
+  "elapsed_s": 4.043,
+  "raw": "[PRIVATE MEMORY REDACTED]",
+  "json": {
+    "id": "chatcmpl-320d626dea8e423f912c",
+    "object": "chat.completion",
+    "created": 1795779900,
+    "model": "agnes-3.0-flash",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "任务 tsk_f327c97429764527 状态如实报告：status=succeeded、error 为空、终态校验通过，结果标记 BB8-ROUND4-T6B-T6-OK 已出现，视为完成。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "error": null
+}
