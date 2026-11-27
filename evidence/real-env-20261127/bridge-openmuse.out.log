@@ -1,0 +1,10 @@
+[16:35:57] [bridge] task engine: {"ok": true, "db": "G:\\openmuse\\xiaozhi-server\\bridge\\tasks.db", "max_workers": 2, "recovered": 0, "receiver": null}
+[16:35:57] [bridge] listening on http://127.0.0.1:8902 -> http://127.0.0.1:8890
+[16:35:57] [bridge] ROBOT-CMD build v10 (local fast lane)
+[16:36:03] [bridge] "GET /health HTTP/1.1" 200 -
+[16:37:44] [bridge] vision_look -> '你看到了什么'
+[16:37:44] [bridge] cam discovered by MAC: 192.168.1.5
+[16:37:44] [bridge] vision: capture ok http://192.168.1.5/capture (3800 bytes)
+[16:37:45] [bridge] vision_look ok 0.91s: '我看到一条发光的曲线，周围很暗。'
+[16:37:45] [bridge] vision observation -> Brain context (286 chars)
+[16:37:50] [bridge] "POST /v1/chat/completions HTTP/1.1" 200 -

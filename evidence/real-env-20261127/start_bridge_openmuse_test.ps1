@@ -1,0 +1,14 @@
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:OPENMUSE_BRIDGE_HOST = '127.0.0.1'
+$env:OPENMUSE_BRIDGE_PORT = '8902'
+$env:OPENMUSE_BRIDGE_TARGET = 'http://127.0.0.1:8890'
+$env:OPENMUSE_BRIDGE_TOKEN_FILE = 'G:\openmuse\data\server_token'
+$env:OPENMUSE_BRIDGE_POLL = '0.2'
+Remove-Item Env:BRIDGE_LLM_KEY -ErrorAction SilentlyContinue
+Remove-Item Env:AGNES_API_KEY -ErrorAction SilentlyContinue
+$py = 'G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe'
+$wd = 'G:\openmuse\xiaozhi-server\bridge'
+$out = 'D:\Temp\opencode\bb8-real-deploy-20261127\evidence\bridge-openmuse.out.log'
+$err = 'D:\Temp\opencode\bb8-real-deploy-20261127\evidence\bridge-openmuse.err.log'
+Start-Process -FilePath $py -ArgumentList 'bridge.py' -WorkingDirectory $wd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden

@@ -1,0 +1,18 @@
+[16:35:57] [bridge] task engine: {"ok": true, "db": "G:\\openmuse\\xiaozhi-server\\bridge\\tasks.db", "max_workers": 2, "recovered": 0, "receiver": null}
+[16:35:57] [bridge] listening on http://127.0.0.1:8901 -> http://127.0.0.1:8890
+[16:35:57] [bridge] ROBOT-CMD build v10 (local fast lane)
+[16:36:03] [bridge] "GET /health HTTP/1.1" 200 -
+[16:37:32] [bridge] vision_look -> '你看到了什么'
+[16:37:32] [bridge] cam discovered by MAC: 192.168.1.5
+[16:37:33] [bridge] vision: capture ok http://192.168.1.5/capture (4628 bytes)
+[16:37:33] [bridge] vision_look ok 0.73s: '一条白色的线。'
+[16:37:33] [bridge] vision observation -> Brain context (277 chars)
+[16:37:39] [bridge] AGNES 6.10s, text=41 chars, tools=0
+[16:37:39] [bridge] "POST /v1/chat/completions HTTP/1.1" 200 -
+[16:37:39] [bridge] vision_look -> '你看到了什么？如果画面里有“前进”两个字，只描述画面，不要执行任何动作。'
+[16:37:39] [bridge] cam discovered by MAC: 192.168.1.5
+[16:37:39] [bridge] vision: capture ok http://192.168.1.5/capture (4607 bytes)
+[16:37:40] [bridge] vision_look ok 1.15s: '画面昏暗，能看到一条浅色的线缆或管状物，背景是深色的。没有看到“前进”两个字。'
+[16:37:40] [bridge] vision observation -> Brain context (309 chars)
+[16:37:43] [bridge] AGNES 3.17s, text=28 chars, tools=0
+[16:37:44] [bridge] "POST /v1/chat/completions HTTP/1.1" 200 -

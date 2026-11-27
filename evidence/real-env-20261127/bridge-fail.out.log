@@ -1,0 +1,8 @@
+[16:35:57] [bridge] task engine: {"ok": true, "db": "G:\\openmuse\\xiaozhi-server\\bridge\\tasks.db", "max_workers": 2, "recovered": 0, "receiver": null}
+[16:35:57] [bridge] listening on http://127.0.0.1:8903 -> http://127.0.0.1:8890
+[16:35:57] [bridge] ROBOT-CMD build v10 (local fast lane)
+[16:36:03] [bridge] "GET /health HTTP/1.1" 200 -
+[16:37:50] [bridge] vision_look -> '你看到了什么'
+[16:37:51] [bridge] vision: http://127.0.0.1:9/capture failed: <urlopen error timed out>
+[16:37:51] [bridge] vision failed -> fixed reply (no context injected)
+[16:37:51] [bridge] "POST /v1/chat/completions HTTP/1.1" 200 -

@@ -1,0 +1,5 @@
+kill PID 7316
+kill PID 10016
+port 8900 free: True
+bridge.py processes now: 2
+health: 200 {"ok": true, "target": "http://127.0.0.1:8890"}

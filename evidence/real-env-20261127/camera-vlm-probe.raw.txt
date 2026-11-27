@@ -1,0 +1,15 @@
+CAM_URLS=["http://192.168.1.9/capture", "http://192.168.4.1/capture"]
+VISION_MODEL=Qwen/Qwen3-VL-8B-Instruct
+CAPTURE_TIMEOUT=3.0
+SF_VISION_TIMEOUT=6.0
+[16:35:37] [bridge] cam discovered by MAC: 192.168.1.5
+[16:35:37] [bridge] vision: capture ok http://192.168.1.5/capture (5606 bytes)
+CAPTURE_OK=True
+CAPTURE_BYTES=5606
+CAPTURE_SECONDS=0.304
+[16:35:37] [bridge] cam discovered by MAC: 192.168.1.5
+[16:35:37] [bridge] vision: capture ok http://192.168.1.5/capture (5508 bytes)
+[16:35:38] [bridge] vision_look ok 0.87s: '妯＄硦鐨勬殫鑹茬幆澧冿紝鏈夊嚑鏉℃祬鑹茬嚎鏉°€?
+VLM_SECONDS=0.869
+VLM_REPLY=妯＄硦鐨勬殫鑹茬幆澧冿紝鏈夊嚑鏉℃祬鑹茬嚎鏉°€?
+VLM_IS_FAIL_MSG=False
