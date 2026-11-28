@@ -25,6 +25,7 @@ class ASRProvider(ASRProviderBase):
         self.forward_task = None
         self.is_processing = False  # 添加处理状态标志
         self._is_stopping = False  # 添加停止标志，防止竞态条件
+        self._session_reservation = None  # connect 尚未返回时的会话归属标记
 
         # 配置参数
         self.appid = str(config.get("appid"))
@@ -74,6 +75,8 @@ class ASRProvider(ASRProviderBase):
         if audio_have_voice and self.asr_ws is None and not self.is_processing:
             try:
                 self.is_processing = True
+                # connect 返回前 asr_ws 仍为空；先预留会话归属，旧 cleanup 不得清掉本轮状态。
+                self._session_reservation = object()
                 # 本轮 ASR 会话绑定音频源 generation；作为独立参数传给结果任务，
                 # 任务全程只用自己的参数，不读连接当前值或 Provider 共享属性。
                 source_generation = getattr(conn, "current_audio_generation", None)
@@ -91,6 +94,7 @@ class ASRProvider(ASRProviderBase):
                     close_timeout=10,
                 )
                 self.asr_ws = session_ws
+                self._session_reservation = None
 
                 # 发送初始化请求
                 request_params = self.construct_request(str(uuid.uuid4()))
@@ -146,6 +150,7 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
                 if hasattr(e, "__cause__") and e.__cause__:
                     logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
+                self._session_reservation = None
                 await self._cleanup(session_ws)
                 return
 
@@ -278,8 +283,10 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
 
         # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-        if self.asr_ws is session_ws or self.asr_ws is None:
+        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
+        if self.asr_ws is session_ws or (
+            self.asr_ws is None and self._session_reservation is None
+        ):
             self.asr_ws = None
             self.is_processing = False
             self._is_stopping = False

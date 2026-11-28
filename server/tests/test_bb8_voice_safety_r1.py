@@ -736,6 +736,7 @@ class _BlockingCloseWs:
         self.recv_gate_after = recv_gate_after
         self.close_started = asyncio.Event()
         self.closed = False
+        self.sent = []
 
     async def recv(self):
         if self.recv_gate is not None and len(self._messages) <= self.recv_gate_after:
@@ -745,6 +746,7 @@ class _BlockingCloseWs:
         raise websockets.ConnectionClosed(None, None)
 
     async def send(self, data):
+        self.sent.append(data)
         return None
 
     async def close(self):
@@ -914,6 +916,200 @@ class TestStreamSessionResourceIsolation(unittest.IsolatedAsyncioTestCase):
         await self._run_case(AliyunBlStreamProvider, {}, message, "_forward_results")
 
     async def test_xunfei_old_cleanup_does_not_destroy_new_session(self):
+        encoded = base64.b64encode(
+            json.dumps(
+                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False
+            ).encode("utf-8")
+        ).decode("ascii")
+        message = json.dumps(
+            {
+                "header": {"code": 0, "status": 2},
+                "payload": {"result": {"text": encoded}},
+            }
+        )
+        await self._run_case(
+            XunfeiStreamProvider,
+            {"app_id": "test", "api_key": "test", "api_secret": "test"},
+            message,
+            "_forward_results",
+        )
+
+
+class TestStreamConnectReservationIsolation(unittest.IsolatedAsyncioTestCase):
+    """旧 cleanup 暂停在 close 时，新会话 connect 尚未返回的归属窗口。"""
+
+    async def _run_case(
+        self, provider_cls, config, message, forward_name, parse_response=False
+    ):
+        conn = make_conn()
+        provider = provider_cls(config, False)
+        conn.asr = provider
+
+        # 旧轮次：旧任务绑定到自己的 WebSocket 与 generation。
+        conn.audio_gate.rotate("old_round")
+        _, old_item = conn.enqueue_microphone_audio(b"old-frame" * 16)
+        old_generation, _, _ = unpack_gated_frame(old_item)
+        conn.current_audio_generation = old_generation
+        conn.asr_audio = [b"old-frame"] * 16
+
+        old_close_gate = asyncio.Event()
+        old_ws = _BlockingCloseWs([message], close_gate=old_close_gate)
+        provider.asr_ws = old_ws
+        provider.is_processing = True
+        provider.server_ready = True
+        provider.forward_task = None
+        old_task_id = "old-task"
+        if hasattr(provider, "task_id"):
+            provider.task_id = old_task_id
+        if parse_response:
+            provider.parse_response = MagicMock(return_value=message)
+
+        calls = []
+
+        async def handle_voice_stop(c, audio, source_generation=SOURCE_GENERATION_UNSET):
+            calls.append(source_generation)
+            if source_generation == old_generation:
+                # 模拟旧轮次同步停止：释放 processing/asr_ws，使新会话得以启动。
+                provider.stop_ws_connection()
+                provider.asr_ws = None
+                provider.is_processing = False
+                return
+            return await ASRProviderBase.handle_voice_stop(
+                provider, c, audio, source_generation=source_generation
+            )
+
+        provider.handle_voice_stop = handle_voice_stop
+        provider.speech_to_text_wrapper = AsyncMock(return_value=("新轮文本", None))
+
+        new_recv_gate = asyncio.Event()
+        new_ws = _BlockingCloseWs(
+            [message, message] if parse_response else [message],
+            recv_gate=new_recv_gate,
+            recv_gate_after=1,
+        )
+        connect_gate = asyncio.Event()
+        connect_started = asyncio.Event()
+
+        async def gated_connect(*args, **kwargs):
+            connect_started.set()
+            await connect_gate.wait()
+            return new_ws
+
+        forward = getattr(provider, forward_name)
+        forward_args = [conn, old_generation, old_ws]
+        if forward_name == "_forward_results" and isinstance(
+            provider, AliyunBlStreamProvider
+        ):
+            forward_args.append(old_task_id)
+
+        with patch.object(
+            websockets, "connect", new=gated_connect
+        ), patch.object(
+            asr_base, "enqueue_asr_report", new=MagicMock()
+        ), patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            old_task = asyncio.create_task(forward(*forward_args))
+            await asyncio.wait_for(old_ws.close_started.wait(), 2)
+            self.assertIsNone(provider.asr_ws)
+            self.assertFalse(provider.is_processing)
+
+            # 新轮次 rotate 后，在同一个 Provider 实例上启动新会话。
+            conn.audio_gate.rotate("new_round")
+            _, new_item = conn.enqueue_microphone_audio(b"new-frame" * 16)
+            new_generation, _, _ = unpack_gated_frame(new_item)
+            conn.current_audio_generation = new_generation
+            conn.asr_audio = [b"new-frame"] * 16
+            conn.client_voice_stop = False
+
+            new_session_task = asyncio.create_task(
+                provider.receive_audio(conn, b"new-frame", True)
+            )
+            # 新会话已进入 connect 但尚未返回：asr_ws 仍为空，归属必须先预留。
+            await asyncio.wait_for(connect_started.wait(), 2)
+            self.assertIsNone(provider.asr_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIsNotNone(provider._session_reservation)
+            self.assertIsNone(provider.forward_task)
+            reserved_task_id = getattr(provider, "task_id", None)
+            if isinstance(provider, AliyunBlStreamProvider):
+                self.assertIsNotNone(reserved_task_id)
+                self.assertNotEqual(reserved_task_id, old_task_id)
+
+            # 旧 close 返回；旧 cleanup 不得仅凭 asr_ws is None 清空新会话状态。
+            old_close_gate.set()
+            await asyncio.wait_for(old_task, 2)
+            self.assertTrue(old_ws.closed)
+            self.assertIsNone(provider.asr_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIsNotNone(provider._session_reservation)
+            self.assertIsNone(provider.forward_task)
+            if isinstance(provider, AliyunBlStreamProvider):
+                self.assertEqual(provider.task_id, reserved_task_id)
+
+            # 释放新 connect：新会话完成建立并保有全部共享状态。
+            connect_gate.set()
+            await asyncio.wait_for(new_session_task, 2)
+            self.assertIs(provider.asr_ws, new_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIsNone(provider._session_reservation)
+            self.assertIsNotNone(provider.forward_task)
+            new_task = provider.forward_task
+            self.assertFalse(new_task.done())
+            if isinstance(provider, AliyunBlStreamProvider):
+                # run-task 必须使用 connect 前捕获的局部 task_id，不能回读共享字段。
+                self.assertEqual(provider.task_id, reserved_task_id)
+                run_task = [
+                    json.loads(sent)
+                    for sent in new_ws.sent
+                    if isinstance(sent, str) and '"run-task"' in sent
+                ]
+                self.assertEqual(len(run_task), 1)
+                self.assertEqual(run_task[0]["header"]["task_id"], reserved_task_id)
+
+            # 新任务仍能正常完成并派发 Brain。
+            new_recv_gate.set()
+            await asyncio.wait_for(new_task, 5)
+            self.assertEqual(calls, [old_generation, new_generation])
+            brain.assert_awaited_once()
+            self.assertEqual(brain.await_args.kwargs["source_generation"], new_generation)
+
+    async def test_doubao_connect_window_is_not_cleared_by_old_cleanup(self):
+        message = {
+            "payload_msg": {
+                "result": {
+                    "text": "你好",
+                    "utterances": [{"definite": True, "text": "你好"}],
+                },
+                "audio_info": {"duration": 100},
+            }
+        }
+        await self._run_case(
+            DoubaoStreamProvider,
+            {"appid": "test", "access_token": "test", "enable_multilingual": False},
+            message,
+            "_forward_asr_results",
+            parse_response=True,
+        )
+
+    async def test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup(self):
+        message = json.dumps(
+            {
+                "header": {"event": "result-generated"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "你好",
+                            "sentence_end": True,
+                            "end_time": 123,
+                        }
+                    }
+                },
+            }
+        )
+        await self._run_case(AliyunBlStreamProvider, {}, message, "_forward_results")
+
+    async def test_xunfei_connect_window_is_not_cleared_by_old_cleanup(self):
         encoded = base64.b64encode(
             json.dumps(
                 {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False

@@ -36,6 +36,7 @@ class ASRProvider(ASRProviderBase):
         self.forward_task = None
         self.is_processing = False
         self.server_ready = False
+        self._session_reservation = None  # connect 尚未返回时的会话归属标记
 
         # 讯飞配置
         self.app_id = config.get("app_id")
@@ -126,6 +127,8 @@ class ASRProvider(ASRProviderBase):
         session_ws = None
         try:
             self.is_processing = True
+            # connect 返回前 asr_ws 仍为空；先预留会话归属，旧 cleanup 不得清掉本轮状态。
+            self._session_reservation = object()
             # 建立WebSocket连接
             ws_url = self.create_url()
             logger.bind(tag=TAG).info(f"正在连接ASR服务: {ws_url[:50]}...")
@@ -142,6 +145,7 @@ class ASRProvider(ASRProviderBase):
                 close_timeout=10,
             )
             self.asr_ws = session_ws
+            self._session_reservation = None
 
             logger.bind(tag=TAG).info("ASR WebSocket连接已建立")
             self.server_ready = False
@@ -170,6 +174,7 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
             if session_ws is not None:
                 await session_ws.close()
+            self._session_reservation = None
             if self.asr_ws is session_ws or self.asr_ws is None:
                 self.asr_ws = None
                 self.is_processing = False
@@ -323,8 +328,10 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
 
         # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-        if self.asr_ws is session_ws or self.asr_ws is None:
+        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
+        if self.asr_ws is session_ws or (
+            self.asr_ws is None and self._session_reservation is None
+        ):
             self.asr_ws = None
             self.is_processing = False
             self.server_ready = False

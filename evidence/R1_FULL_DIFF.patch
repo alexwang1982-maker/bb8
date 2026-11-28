@@ -1,9 +1,9 @@
 diff --git a/evidence/R1_BARGE_IN_SAFETY_DESIGN.md b/evidence/R1_BARGE_IN_SAFETY_DESIGN.md
 new file mode 100644
-index 0000000..0a703e5
+index 0000000..68b3f4f
 --- /dev/null
 +++ b/evidence/R1_BARGE_IN_SAFETY_DESIGN.md
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,55 @@
 +# BB-8 R1 Barge-in 与音频来源门控安全设计
 +
 +本设计只描述本轮已实现的可测试门控，不宣称声纹已形成工具授权系统。
@@ -35,6 +35,7 @@ index 0000000..0a703e5
 +- STREAM ASR 在识别会话建立时捕获 `conn.current_audio_generation`，作为独立参数传给结果任务；任务全程只用自己的入参，不读连接当前 generation，也不使用 Provider 共享属性。`reset/abort` 后旧回调不能借用新轮次 generation。
 +- 四种 STREAM 的 `finally` 只在 `is_current(source_generation)` 时做连接级收尾；旧会话 cleanup 不 rotate/清空新会话 generation。
 +- STREAM 会话 WS/task_id 也是会话局部对象：结果任务、停止请求与 `_cleanup()` 均不借用 `self.asr_ws` / `self.task_id`；`await close()` 后按 WS 归属确认才清共享状态，旧 cleanup 不关闭/清空新会话的 `asr_ws`、`forward_task`、`is_processing`。
++- doubao / aliyunbl / xunfei 在 `websockets.connect()` 之前（任何 await 之前）写入会话局部 `_session_reservation` 标记；`_cleanup()` 仅在 `asr_ws` 仍为本会话 WS，或 `asr_ws is None` 且无新会话预留时清共享状态。connect 窗口内旧 cleanup 不能清空新会话已写入的 `is_processing` / `forward_task` / 百炼 `task_id`；百炼 run-task 使用 connect 前捕获的局部 task_id。aliyun 的共享状态写入全部在 connect 之后，确认无同类时序，未改动。
 +- ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 不是有效授权。
 +- `handleAbortMessage()` 在进入时记录 playback token + sentence；等待 stop 发送期间若新轮次 TTS 已启动，旧 Abort 不再执行 `clearSpeakStatus()`，因此不会清除新播放态或重新开放音频入口。
 +- `clear_queues()` 也清空两个音频队列和 `asr_audio`，保证 abort 路径不残留。
@@ -134,10 +135,10 @@ index 0000000..f1be65c
 +- 密钥：见 `R1_KEY_INJECTION_AUDIT.md`，部署门禁 BLOCKED。
 diff --git a/evidence/R1_DELIVERY_REPORT.md b/evidence/R1_DELIVERY_REPORT.md
 new file mode 100644
-index 0000000..dfc45b6
+index 0000000..be38cee
 --- /dev/null
 +++ b/evidence/R1_DELIVERY_REPORT.md
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,137 @@
 +# BB-8 R1 复审修正交付报告
 +
 +## 1. 交付范围
@@ -177,12 +178,22 @@ index 0000000..dfc45b6
 +- 四种 Provider 的 `finally` 清理只在 `conn.audio_gate.is_current(source_generation)` 为真时调用 `conn.reset_audio_states()`；旧会话 cleanup 不会 rotate/清空新会话已取得的 generation。
 +- 新增 4 项并发回归（每种 Provider 一项）：旧任务先创建不执行 → 新轮次启动并取得新 generation → 旧任务执行时用旧 generation 且 Brain 不被调用 → 新任务用新 generation 正常派发 Brain；讯飞覆写透传也单独断言。
 +
-+### 2.5 STREAM 会话资源隔离（最终复审）
++### 2.5 STREAM 会话资源隔离（复审）
 +
 +- 四种 STREAM Provider 的 WebSocket、task_id 与连接状态在会话建立时捕获为会话局部对象；结果任务只调用该 WebSocket 收/发，停止请求也只作用于调用时所属的会话对象。
 +- `_cleanup(session_ws, session_task_id)` 只关闭传入的旧 WebSocket；`await close()` 期间若新会话已占用 Provider，则再次确认归属，只有仍持有同一 WS（或尚未有新会话）时才清空 `asr_ws` / `is_processing` / `server_ready` / `forward_task` / `task_id`。旧 cleanup 不再关闭或清空新会话资源。
 +- `stop_ws_connection()` 同样先捕获旧 WS 再置空共享引用；启动失败路径也关闭会话局部 WS，避免异常清理误伤新会话。
 +- 新增 4 项同一 Provider 实例异步交错回归：旧任务进入 `cleanup` 并暂停在 WebSocket close → 新轮次 rotate → 在同一实例启动新会话 → 释放旧 close → 断言新 WS 未被关闭、`asr_ws` / `forward_task` / `is_processing` 均未被旧任务破坏，且新任务随后正常完成并派发 Brain。
++
++### 2.6 STREAM connect 返回前的会话归属预留（最终复审）
++
++- 覆盖范围仅 doubao、aliyunbl、xunfei 三个已确认存在该时序的 Provider；aliyun 不修改。
++- 三个 Provider 在 `websockets.connect()` 之前（任何 await 之前）设置会话局部 `_session_reservation` 标记；`is_processing`（以及百炼的 `task_id`）同样在 connect 前以本轮局部值写入。connect 返回、共享状态提交后再清除标记。
++- `_cleanup()` 在 `await close()` 之后重新确认归属：仅当仍持有同一 WS，或 `asr_ws is None` 且**没有新会话预留**时，才清空共享状态。旧 cleanup 不能仅凭 `self.asr_ws is None` 判定“无人占用”。
++- 百炼的 `session_task_id` 在会话建立前捕获为局部变量，run-task 与 finish-task 始终使用该局部值，不再在 await 之后回读 `self.task_id`。
++- 启动失败路径先清除本轮预留再清理，避免失败残留标记阻塞后续收尾。
++- 新增 3 项确定性异步交错回归：旧 cleanup 暂停在 close → 新会话 connect 暂停且尚未返回（`asr_ws` 仍为 None）→ 释放旧 close → 断言 `is_processing` / 预留标记 / `forward_task` / 百炼 `task_id` 未被清空 → 释放 connect → 新会话完成建立并正常派发 Brain。
++- **aliyun 无同类问题**：`_start_recognition()` 把 `self.asr_ws` / `self.task_id` / `is_processing` / `server_ready` / `forward_task` 的全部写入放在 `await websockets.connect()` 返回之后；connect 窗口内 Provider 仍处于干净的空闲态，旧 cleanup 即使清空也只是重复置空，新会话返回后会重新提交全部状态。因此本轮不改 aliyun。
 +
 +## 3. 视觉范围移除
 +
@@ -197,9 +208,9 @@ index 0000000..dfc45b6
 +
 +## 4. 测试证据
 +
-+### 4.1 R1 新增测试：30/30 PASS
++### 4.1 R1 新增测试：33/33 PASS
 +
-+`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 30 tests in 1.775s` / `OK`。较上一版（26 项）新增 4 项 STREAM 会话资源交错回归：
++`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 33 tests in 2.459s` / `OK`。较上一版（30 项）新增 3 项 STREAM connect 窗口交错回归：
 +
 +| 用例 | 断言 |
 +| --- | --- |
@@ -217,12 +228,15 @@ index 0000000..dfc45b6
 +| **`test_aliyun_old_cleanup_does_not_destroy_new_session`** | aliyun：同上 |
 +| **`test_aliyunbl_old_cleanup_does_not_destroy_new_session`** | aliyunbl：同上，finish-task 也只作用于旧会话 WS/task_id |
 +| **`test_xunfei_old_cleanup_does_not_destroy_new_session`** | xunfei：同上，最后一帧只发给旧会话 WS |
++| **`test_doubao_connect_window_is_not_cleared_by_old_cleanup`** | doubao：新会话 connect 暂停且 `asr_ws` 为 None 时旧 cleanup 返回，预留状态不被清空；connect 后正常完成 |
++| **`test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup`** | aliyunbl：同上，并断言 connect 前捕获的局部 `task_id` 未被清空且 run-task 使用该局部值 |
++| **`test_xunfei_connect_window_is_not_cleared_by_old_cleanup`** | xunfei：同上 |
 +| `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清新 token 播放态，入口保持关闭 |
 +| `test_abort_without_new_round_still_clears` | 正常 Abort 仍收口 |
 +| `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
 +| `test_concurrent_gate_changes_keep_generation_consistent` | 6 线程 × 300 次并发变更 generation 一致 |
 +
-+（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、STREAM 会话资源隔离 4 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 30 项。）
++（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、STREAM 会话资源隔离 4 项、STREAM connect 窗口隔离 3 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 33 项。）
 +
 +### 4.2 既有安全回归：基线固有 FAIL + 挂起
 +
@@ -237,11 +251,11 @@ index 0000000..dfc45b6
 +| 文件 | 内容 |
 +| --- | --- |
 +| `R1_FULL_DIFF.patch` | 从基线 `8197bbb` 到最终工作副本的完整 diff（不含补丁文件自身，避免自引用） |
-+| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 30 项测试原始输出 |
++| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 33 项测试原始输出 |
 +| `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` | 既有安全套件 FAIL/挂起原始记录 |
 +| `R1_TEST_EVIDENCE.md` | 测试覆盖与验收边界 |
 +| `WORKCOPY_AFTER_SHA256.csv` | 最终工作副本关键文件 size + SHA256 |
-+| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含四轮复审并发修正） |
++| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含五轮复审并发修正） |
 +| `R1_BASELINE_AND_INSTANCES.md` | 基线与运行态盘点（只读） |
 +| `R1_VOICEPRINT_AUTHORIZATION_AUDIT.md` | 声纹/授权链审计 |
 +| `R1_KEY_INJECTION_AUDIT.md` | 密钥注入只读审计 |
@@ -264,10 +278,10 @@ index 0000000..dfc45b6
 +部署仍 BLOCKED：密钥注入未明确、bridge 实例归属未最终确认、真人声学验收未执行。等待独立复审通过后，由获批人员在维护窗口内按 `R1_DEPLOYMENT_ROLLBACK_PLAN.md` 执行。
 diff --git a/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md b/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md
 new file mode 100644
-index 0000000..7eec9cd
+index 0000000..464f506
 --- /dev/null
 +++ b/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +# BB-8 R1 部署与回滚计划（待批准，未执行）
 +
 +本计划只供审批，**本轮未部署、未重启、未刷机、未触发硬件、未修改生产实例**。
@@ -276,7 +290,7 @@ index 0000000..7eec9cd
 +
 +| 门禁项 | 状态 | 说明 |
 +| --- | --- | --- |
-+| R1 自动化新增测试 | PASS | 30/30，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
++| R1 自动化新增测试 | PASS | 33/33，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
 +| 既有安全回归测试 | FAIL + 挂起（基线固有） | 见 `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 与 `R1_TEST_EVIDENCE.md` |
 +| 密钥明确 | **BLOCKED** | 三路密钥无生产注入配置，见 `R1_KEY_INJECTION_AUDIT.md` |
 +| 实例确认 | **BLOCKED** | 两个 bridge 实例（8900/8910）目标端口与启动来源未最终确认 |
@@ -297,7 +311,8 @@ index 0000000..7eec9cd
 +| `server/core/handle/textHandler/listenMessageHandler.py` | listen start/detect 可信拾音；复审修正 stop 保存源 generation |
 +| `server/core/providers/asr/base.py` | 双队列消费、旧 generation 丢弃；复审修正 `source_generation` 哨兵与显式 `None` 拒绝 |
 +| `server/core/providers/asr/{doubao,aliyun,aliyunbl,xunfei}_stream.py` | STREAM 会话 generation/WS/task_id 作为任务独立入参；取消实例共享 generation；cleanup 只关闭本会话 WS，close 后按归属确认再清共享状态 |
-+| `server/tests/test_bb8_voice_safety_r1.py` | 新增：R1 回归测试（30 用例，含 4 个 STREAM generation 隔离 + 4 个会话资源隔离用例） |
++| `server/core/providers/asr/{doubao,aliyunbl,xunfei}_stream.py` | 本轮新增：connect 前预留会话归属；cleanup 仅凭 `asr_ws is None` 不再清空新会话状态；百炼 task_id 在建立前捕获为局部变量（aliyun 无同类时序，未改） |
++| `server/tests/test_bb8_voice_safety_r1.py` | 新增：R1 回归测试（33 用例，含 4 个 STREAM generation 隔离 + 4 个会话资源隔离 + 3 个 connect 窗口隔离用例） |
 +| `evidence/*` | 新增/更新：证据与方案文档 |
 +
 +`bridge/bridge.py` 已恢复基线，**不在 R1 交付范围内**；视觉另立功能。
@@ -490,13 +505,13 @@ index 0000000..e8d9081
 +R1 用来源门控把「播放态帧」隔离到 barge 队列，保证即使没有 AEC 也不会把 TTS 自声当用户指令；这是**隔离**而非**消除**。真实 AEC 是后续独立阶段，二者不冲突、可叠加。
 diff --git a/evidence/R1_TEST_EVIDENCE.md b/evidence/R1_TEST_EVIDENCE.md
 new file mode 100644
-index 0000000..07661cf
+index 0000000..cfc4a83
 --- /dev/null
 +++ b/evidence/R1_TEST_EVIDENCE.md
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,87 @@
 +# BB-8 R1 测试与验收证据（复审修正后）
 +
-+## 1. R1 安全测试：30/30 PASS
++## 1. R1 安全测试：33/33 PASS
 +
 +命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 +
@@ -507,7 +522,7 @@ index 0000000..07661cf
 +原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 +
 +```
-+Ran 30 tests in 1.775s
++Ran 33 tests in 2.459s
 +OK
 +```
 +
@@ -536,10 +551,13 @@ index 0000000..07661cf
 +| | `test_aliyun_stream_task_keeps_own_generation` | aliyun 同上；旧任务 cleanup 不无效化新 generation |
 +| | `test_aliyunbl_stream_task_keeps_own_generation` | aliyunbl 同上 |
 +| | `test_xunfei_stream_task_keeps_own_generation` | xunfei 同上，并断言覆写透传 generation 给基类 |
-+| **最终复审：STREAM 会话资源隔离** | `test_doubao_old_cleanup_does_not_destroy_new_session` | 同一 Provider 实例：旧 cleanup 暂停在 close 时新会话启动；释放后新 WS/forward_task/processing 未破坏，新任务完成并派发 Brain |
++| **复审：STREAM 会话资源隔离** | `test_doubao_old_cleanup_does_not_destroy_new_session` | 同一 Provider 实例：旧 cleanup 暂停在 close 时新会话启动；释放后新 WS/forward_task/processing 未破坏，新任务完成并派发 Brain |
 +| | `test_aliyun_old_cleanup_does_not_destroy_new_session` | aliyun 同上 |
 +| | `test_aliyunbl_old_cleanup_does_not_destroy_new_session` | aliyunbl 同上；finish-task 只作用于旧会话 WS/task_id |
 +| | `test_xunfei_old_cleanup_does_not_destroy_new_session` | xunfei 同上；最后一帧只发给旧会话 WS |
++| **最终复审：STREAM connect 窗口隔离** | `test_doubao_connect_window_is_not_cleared_by_old_cleanup` | 新会话 connect 暂停且 `asr_ws` 为 None；旧 cleanup 返回后预留状态未被清空，connect 后正常完成并派发 Brain |
++| | `test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup` | 同上；并断言 connect 前捕获的局部 `task_id` 未被清空且 run-task 使用该局部值 |
++| | `test_xunfei_connect_window_is_not_cleared_by_old_cleanup` | 同上 |
 +| **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 +| | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 +| **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -577,10 +595,10 @@ index 0000000..07661cf
 +
 +## 5. 结论
 +
-+四轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态；STREAM 旧 cleanup 破坏新会话资源）均有针对性回归测试且通过（30/30）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
++五轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态；STREAM 旧 cleanup 破坏新会话资源；STREAM connect 返回前旧 cleanup 清空新会话预留状态）均有针对性回归测试且通过（33/33）。本轮仅改 doubao / aliyunbl / xunfei；aliyun 的共享状态写入全部在 connect 之后，确认无同类时序问题，未改动。既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
 diff --git a/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md b/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md
 new file mode 100644
-index 0000000..81131bd
+index 0000000..019a049
 --- /dev/null
 +++ b/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md
 @@ -0,0 +1,47 @@
@@ -630,13 +648,13 @@ index 0000000..81131bd
 +
 +## 5. 测试覆盖状态
 +
-+本轮新增 30 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、显式 `None`/STREAM 旧回调、STREAM 结果任务 generation 隔离、STREAM 旧 cleanup 与新会话资源隔离、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。
++本轮新增 33 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、显式 `None`/STREAM 旧回调、STREAM 结果任务 generation 隔离、STREAM 旧 cleanup 与新会话资源隔离、STREAM connect 返回前旧 cleanup 与新会话预留状态隔离、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。
 diff --git a/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt b/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt
 new file mode 100644
-index 0000000..7dc9e63
+index 0000000..a97f6f7
 --- /dev/null
 +++ b/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,87 @@
 +G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
 +  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
 +test_abort_without_new_round_still_clears (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_abort_without_new_round_still_clears) ... ok
@@ -663,52 +681,70 @@ index 0000000..7dc9e63
 +test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stale_sentence_stop_does_not_clear_current_playback) ... ok
 +test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clears_speaking_even_when_send_fails) ... ok
 +test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.test_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
-+test_aliyun_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyun_stream_task_keeps_own_generation) ... [32m261128 11:58:34[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:34[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:34[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 12:09:41[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
-+test_aliyunbl_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyunbl_stream_task_keeps_own_generation) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_doubao_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_doubao_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '5d08aaba-e420-455d-aac5-fc18ca37a7fc'}[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': '94ceec59-e3a5-4173-954f-bb96e7299d3b', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
 +ok
-+test_doubao_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_doubao_stream_task_keeps_own_generation) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++test_xunfei_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_xunfei_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
-+test_xunfei_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_xunfei_stream_task_keeps_own_generation) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_aliyun_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyun_stream_task_keeps_own_generation) ... [32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
-+test_aliyun_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyun_old_cleanup_does_not_destroy_new_session) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_aliyunbl_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyunbl_stream_task_keeps_own_generation) ... [32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
-+test_aliyunbl_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyunbl_old_cleanup_does_not_destroy_new_session) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_doubao_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_doubao_stream_task_keeps_own_generation) ... [32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 12:09:42[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
 +ok
-+test_doubao_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_doubao_old_cleanup_does_not_destroy_new_session) ... [32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '0179fbe1-6f92-4550-856f-11e2b5887301'}[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': 'e45e4971-00cc-4cf0-bbbb-6f69e4567606', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
-+[32m261128 11:58:35[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++test_xunfei_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_xunfei_stream_task_keeps_own_generation) ... [32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
-+test_xunfei_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_xunfei_old_cleanup_does_not_destroy_new_session) ... [32m261128 11:58:36[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
-+[32m261128 11:58:36[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
-+[32m261128 11:58:36[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
-+[32m261128 11:58:36[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++test_aliyun_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyun_old_cleanup_does_not_destroy_new_session) ... [32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_aliyunbl_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyunbl_old_cleanup_does_not_destroy_new_session) ... [32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_doubao_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_doubao_old_cleanup_does_not_destroy_new_session) ... [32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '1dfe068e-995d-4b8d-a869-f931d3279ee8'}[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': '14863081-2fa2-474e-902c-7ad4c3ce5b1b', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++ok
++test_xunfei_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_xunfei_old_cleanup_does_not_destroy_new_session) ... [32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
++[32m261128 12:09:43[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
 +ok
 +
 +----------------------------------------------------------------------
-+Ran 30 tests in 1.775s
++Ran 33 tests in 2.459s
 +
 +OK
 diff --git a/evidence/WORKCOPY_AFTER_SHA256.csv b/evidence/WORKCOPY_AFTER_SHA256.csv
 new file mode 100644
-index 0000000..2543039
+index 0000000..7a612f2
 --- /dev/null
 +++ b/evidence/WORKCOPY_AFTER_SHA256.csv
 @@ -0,0 +1,13 @@
@@ -719,12 +755,12 @@ index 0000000..2543039
 +server/core/handle/sendAudioHandle.py,13442,b09ee59468b0c0ce11b0f607fc97fe944655e8b994db5cbeea2bcf8979e64f44
 +server/core/handle/textHandler/listenMessageHandler.py,6993,59b5df90b36323c29ada2da47c9c2cf7e46a0091f613f8651acb6cca8332b196
 +server/core/providers/asr/aliyun_stream.py,15282,92b1575db258dc0612923af166d52feb32d19b9ccd140cfbc92f2b2303f5bad1
-+server/core/providers/asr/aliyunbl_stream.py,14964,a315471ce2659a7ff8aa9deeb7cb13fb644d5404bb12885128aab502122e5860
++server/core/providers/asr/aliyunbl_stream.py,15566,0c58e90109e52e1b85d452693f3a3bd7d310a8ff3d21b132d0304d8fdc25e669
 +server/core/providers/asr/base.py,17611,a5fc886eeab20a60998a84a96d2b800b0c3badf1557d61e79e543e1add15402f
-+server/core/providers/asr/doubao_stream.py,21734,546b13596df01daa35d0c6bbda223796b4910ea777cff0ce052b8e38f158900b
-+server/core/providers/asr/xunfei_stream.py,14646,9b9416483f4379747e92e6e174d262ff1eea14068928a89a105ded2122acc38b
++server/core/providers/asr/doubao_stream.py,22170,b51b318f33e3ccf88ef34c177c73215c712a3cf657c388f5bc8f9952ee2b359f
++server/core/providers/asr/xunfei_stream.py,15066,803ffe642f8bee2e409e8067e5f3a1c8b3f896de951528ac47ae2e693ecfb74f
 +server/core/utils/audio_source_gate.py,5589,053165e680972d895a97ef69f1271534045e5aca88aa2756802764d8d9d98c51
-+server/tests/test_bb8_voice_safety_r1.py,36762,343a10fc3347c1e0ab267a54f4c7719471a9628cee0d508a4ac7d8fda5050525
++server/tests/test_bb8_voice_safety_r1.py,45009,c8f8e14cb023d2e771f012999b1a4a56e4d740694bb039cccfb7db4c721bbec5
 diff --git a/server/core/connection.py b/server/core/connection.py
 index 196d0f1..a879105 100644
 --- a/server/core/connection.py
@@ -1515,10 +1551,18 @@ index 74bf613..d249760 100644
 -        await self._cleanup()
 +        await self._cleanup(self.asr_ws)
 diff --git a/server/core/providers/asr/aliyunbl_stream.py b/server/core/providers/asr/aliyunbl_stream.py
-index a7c2953..9fc3b91 100644
+index a7c2953..92bbf2b 100644
 --- a/server/core/providers/asr/aliyunbl_stream.py
 +++ b/server/core/providers/asr/aliyunbl_stream.py
-@@ -63,7 +63,7 @@ class ASRProvider(ASRProviderBase):
+@@ -26,6 +26,7 @@ class ASRProvider(ASRProviderBase):
+         self.is_processing = False
+         self.server_ready = False  # 服务器准备状态
+         self.task_id = None  # 当前任务ID
++        self._session_reservation = None  # connect 尚未返回时的会话归属标记
+ 
+         # 阿里百炼配置
+         self.api_key = config.get("api_key")
+@@ -63,7 +64,7 @@ class ASRProvider(ASRProviderBase):
                  await self._start_recognition(conn)
              except Exception as e:
                  logger.bind(tag=TAG).error(f"开始识别失败: {str(e)}")
@@ -1527,7 +1571,7 @@ index a7c2953..9fc3b91 100644
                  return
  
          # 发送音频数据
-@@ -72,10 +72,14 @@ class ASRProvider(ASRProviderBase):
+@@ -72,26 +73,33 @@ class ASRProvider(ASRProviderBase):
                  await self.asr_ws.send(pcm_frame)
              except Exception as e:
                  logger.bind(tag=TAG).warning(f"发送音频失败: {str(e)}")
@@ -1543,9 +1587,14 @@ index a7c2953..9fc3b91 100644
          try:
              # 如果为手动模式,设置超时时长为最大值
              if conn.client_listen_mode == "manual":
-@@ -84,14 +88,14 @@ class ASRProvider(ASRProviderBase):
+                 self.max_sentence_silence = 6000
+ 
              self.is_processing = True
-             self.task_id = uuid.uuid4().hex
+-            self.task_id = uuid.uuid4().hex
++            # connect 返回前先捕获本轮 task_id，并预留会话归属，避免旧 cleanup 清空。
++            session_task_id = uuid.uuid4().hex
++            self.task_id = session_task_id
++            self._session_reservation = object()
  
 -            # 建立WebSocket连接
 +            # 建立WebSocket连接；会话 WS/task_id 是本轮独有。
@@ -1553,19 +1602,20 @@ index a7c2953..9fc3b91 100644
                  "Authorization": f"Bearer {self.api_key}"
              }
  
-             logger.bind(tag=TAG).debug(f"正在连接阿里百炼ASR服务, task_id: {self.task_id}")
+-            logger.bind(tag=TAG).debug(f"正在连接阿里百炼ASR服务, task_id: {self.task_id}")
++            logger.bind(tag=TAG).debug(f"正在连接阿里百炼ASR服务, task_id: {session_task_id}")
  
 -            self.asr_ws = await websockets.connect(
 +            session_ws = await websockets.connect(
                  self.ws_url,
                  additional_headers=headers,
                  max_size=1000000000,
-@@ -99,31 +103,38 @@ class ASRProvider(ASRProviderBase):
+@@ -99,31 +107,42 @@ class ASRProvider(ASRProviderBase):
                  ping_timeout=None,
                  close_timeout=5,
              )
 +            self.asr_ws = session_ws
-+            session_task_id = self.task_id
++            self._session_reservation = None
  
              logger.bind(tag=TAG).debug("WebSocket连接建立成功")
  
@@ -1588,7 +1638,11 @@ index a7c2953..9fc3b91 100644
 -                await self.asr_ws.close()
 +            if session_ws is not None:
 +                await session_ws.close()
-+            if self.asr_ws is session_ws or self.asr_ws is None:
++            self._session_reservation = None
++            # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
++            if self.asr_ws is session_ws or (
++                self.asr_ws is None and self._session_reservation is None
++            ):
                  self.asr_ws = None
 -            self.is_processing = False
 +                self.is_processing = False
@@ -1608,7 +1662,7 @@ index a7c2953..9fc3b91 100644
                  "streaming": "duplex"
              },
              "payload": {
-@@ -154,14 +165,24 @@ class ASRProvider(ASRProviderBase):
+@@ -154,14 +173,24 @@ class ASRProvider(ASRProviderBase):
  
          return message
  
@@ -1636,7 +1690,7 @@ index a7c2953..9fc3b91 100644
                      result = json.loads(response)
  
                      header = result.get("header", {})
-@@ -177,7 +198,7 @@ class ASRProvider(ASRProviderBase):
+@@ -177,7 +206,7 @@ class ASRProvider(ASRProviderBase):
                          if conn.asr_audio:
                              for cached_pcm in conn.asr_audio[-10:]:
                                  try:
@@ -1645,7 +1699,7 @@ index a7c2953..9fc3b91 100644
                                  except Exception as e:
                                      logger.bind(tag=TAG).warning(f"发送缓存音频失败: {e}")
                                      break
-@@ -208,12 +229,12 @@ class ASRProvider(ASRProviderBase):
+@@ -208,12 +237,12 @@ class ASRProvider(ASRProviderBase):
                                  # 手动模式下,只有在收到stop信号后才触发处理
                                  if conn.client_voice_stop:
                                      logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
@@ -1660,7 +1714,7 @@ index a7c2953..9fc3b91 100644
                                  break
  
                      # 处理task-finished事件
-@@ -241,69 +262,70 @@ class ASRProvider(ASRProviderBase):
+@@ -241,69 +270,72 @@ class ASRProvider(ASRProviderBase):
          except Exception as e:
              logger.bind(tag=TAG).error(f"结果转发失败: {str(e)}")
          finally:
@@ -1754,8 +1808,10 @@ index a7c2953..9fc3b91 100644
 -        self.forward_task = None
 -        self.task_id = None
 +        # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-+        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-+        if self.asr_ws is session_ws or self.asr_ws is None:
++        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
++        if self.asr_ws is session_ws or (
++            self.asr_ws is None and self._session_reservation is None
++        ):
 +            self.asr_ws = None
 +            self.is_processing = False
 +            self.server_ready = False
@@ -1764,7 +1820,7 @@ index a7c2953..9fc3b91 100644
  
          logger.bind(tag=TAG).debug("ASR会话清理完成")
  
-@@ -315,4 +337,4 @@ class ASRProvider(ASRProviderBase):
+@@ -315,4 +347,4 @@ class ASRProvider(ASRProviderBase):
  
      async def close(self):
          """关闭资源"""
@@ -1923,14 +1979,24 @@ index 64d6cfd..070ef49 100644
              logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
              import traceback
 diff --git a/server/core/providers/asr/doubao_stream.py b/server/core/providers/asr/doubao_stream.py
-index 130729b..7b48ddc 100644
+index 130729b..c2c8701 100644
 --- a/server/core/providers/asr/doubao_stream.py
 +++ b/server/core/providers/asr/doubao_stream.py
-@@ -74,11 +74,15 @@ class ASRProvider(ASRProviderBase):
+@@ -25,6 +25,7 @@ class ASRProvider(ASRProviderBase):
+         self.forward_task = None
+         self.is_processing = False  # 添加处理状态标志
+         self._is_stopping = False  # 添加停止标志，防止竞态条件
++        self._session_reservation = None  # connect 尚未返回时的会话归属标记
+ 
+         # 配置参数
+         self.appid = str(config.get("appid"))
+@@ -74,11 +75,17 @@ class ASRProvider(ASRProviderBase):
          if audio_have_voice and self.asr_ws is None and not self.is_processing:
              try:
                  self.is_processing = True
 -                # 建立新的WebSocket连接
++                # connect 返回前 asr_ws 仍为空；先预留会话归属，旧 cleanup 不得清掉本轮状态。
++                self._session_reservation = object()
 +                # 本轮 ASR 会话绑定音频源 generation；作为独立参数传给结果任务，
 +                # 任务全程只用自己的参数，不读连接当前值或 Provider 共享属性。
 +                source_generation = getattr(conn, "current_audio_generation", None)
@@ -1944,15 +2010,16 @@ index 130729b..7b48ddc 100644
                      self.ws_url,
                      additional_headers=headers,
                      max_size=1000000000,
-@@ -86,6 +90,7 @@ class ASRProvider(ASRProviderBase):
+@@ -86,6 +93,8 @@ class ASRProvider(ASRProviderBase):
                      ping_timeout=None,
                      close_timeout=10,
                  )
 +                self.asr_ws = session_ws
++                self._session_reservation = None
  
                  # 发送初始化请求
                  request_params = self.construct_request(str(uuid.uuid4()))
-@@ -97,10 +102,10 @@ class ASRProvider(ASRProviderBase):
+@@ -97,10 +106,10 @@ class ASRProvider(ASRProviderBase):
                      full_client_request.extend(payload_bytes)
  
                      logger.bind(tag=TAG).info(f"发送初始化请求: {request_params}")
@@ -1965,7 +2032,7 @@ index 130729b..7b48ddc 100644
                      result = self.parse_response(init_res)
                      logger.bind(tag=TAG).info(f"收到初始化响应: {result}")
  
-@@ -117,7 +122,9 @@ class ASRProvider(ASRProviderBase):
+@@ -117,7 +126,9 @@ class ASRProvider(ASRProviderBase):
                      raise e
  
                  # 启动接收ASR结果的异步任务
@@ -1976,7 +2043,7 @@ index 130729b..7b48ddc 100644
  
                  # 发送缓存的音频数据
                  if conn.asr_audio and len(conn.asr_audio) > 0:
-@@ -129,7 +136,7 @@ class ASRProvider(ASRProviderBase):
+@@ -129,7 +140,7 @@ class ASRProvider(ASRProviderBase):
                              )
                              audio_request.extend(len(payload).to_bytes(4, "big"))
                              audio_request.extend(payload)
@@ -1985,7 +2052,7 @@ index 130729b..7b48ddc 100644
                          except Exception as e:
                              logger.bind(tag=TAG).info(
                                  f"发送缓存音频数据时发生错误: {e}"
-@@ -139,10 +146,7 @@ class ASRProvider(ASRProviderBase):
+@@ -139,10 +150,8 @@ class ASRProvider(ASRProviderBase):
                  logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
                  if hasattr(e, "__cause__") and e.__cause__:
                      logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
@@ -1993,11 +2060,12 @@ index 130729b..7b48ddc 100644
 -                    await self.asr_ws.close()
 -                    self.asr_ws = None
 -                self.is_processing = False
++                self._session_reservation = None
 +                await self._cleanup(session_ws)
                  return
  
          # 发送当前音频数据
-@@ -156,13 +160,18 @@ class ASRProvider(ASRProviderBase):
+@@ -156,13 +165,18 @@ class ASRProvider(ASRProviderBase):
              except Exception as e:
                  logger.bind(tag=TAG).info(f"发送音频数据时发生错误: {e}")
  
@@ -2019,7 +2087,7 @@ index 130729b..7b48ddc 100644
                      result = self.parse_response(response)
                      logger.bind(tag=TAG).debug(f"收到ASR结果: {result}")
  
-@@ -187,7 +196,7 @@ class ASRProvider(ASRProviderBase):
+@@ -187,7 +201,7 @@ class ASRProvider(ASRProviderBase):
                                  logger.bind(tag=TAG).error(f"识别文本：空")
                                  self.text = ""
                                  if len(audio_data) > 15:  # 确保有足够音频数据
@@ -2028,7 +2096,7 @@ index 130729b..7b48ddc 100644
                                  break
  
                              # 专门处理没有文本的识别结果（手动模式下可能已经识别完成但是没松按键）
-@@ -198,7 +207,7 @@ class ASRProvider(ASRProviderBase):
+@@ -198,7 +212,7 @@ class ASRProvider(ASRProviderBase):
  
                                  if conn.client_listen_mode == "manual" and conn.client_voice_stop and len(audio_data) > 15:
                                      logger.bind(tag=TAG).debug("消息结束收到停止信号，触发处理")
@@ -2037,7 +2105,7 @@ index 130729b..7b48ddc 100644
                                      break
  
                              for utterance in utterances:
-@@ -218,14 +227,15 @@ class ASRProvider(ASRProviderBase):
+@@ -218,14 +232,15 @@ class ASRProvider(ASRProviderBase):
                                          # 在接收消息中途时收到停止信号
                                          if conn.client_voice_stop and len(audio_data) > 0:
                                              logger.bind(tag=TAG).debug("消息中途收到停止信号，触发处理")
@@ -2055,7 +2123,7 @@ index 130729b..7b48ddc 100644
                                              )
                                      break
                          elif "error" in payload:
-@@ -249,25 +259,45 @@ class ASRProvider(ASRProviderBase):
+@@ -249,25 +264,47 @@ class ASRProvider(ASRProviderBase):
              if hasattr(e, "__cause__") and e.__cause__:
                  logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
          finally:
@@ -2081,8 +2149,10 @@ index 130729b..7b48ddc 100644
 +                logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
 +
 +        # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-+        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-+        if self.asr_ws is session_ws or self.asr_ws is None:
++        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
++        if self.asr_ws is session_ws or (
++            self.asr_ws is None and self._session_reservation is None
++        ):
 +            self.asr_ws = None
              self.is_processing = False
              self._is_stopping = False
@@ -2110,7 +2180,7 @@ index 130729b..7b48ddc 100644
              try:
                  # 发送结束标记的音频帧（gzip压缩的空数据）
                  empty_payload = gzip.compress(b"")
-@@ -276,7 +306,7 @@ class ASRProvider(ASRProviderBase):
+@@ -276,7 +313,7 @@ class ASRProvider(ASRProviderBase):
                  )
                  last_audio_request.extend(len(empty_payload).to_bytes(4, "big"))
                  last_audio_request.extend(empty_payload)
@@ -2120,7 +2190,7 @@ index 130729b..7b48ddc 100644
              except Exception as e:
                  logger.bind(tag=TAG).debug(f"发送结束音频帧时出错: {e}")
 diff --git a/server/core/providers/asr/xunfei_stream.py b/server/core/providers/asr/xunfei_stream.py
-index fa59ca3..f09dfac 100644
+index fa59ca3..9f7a689 100644
 --- a/server/core/providers/asr/xunfei_stream.py
 +++ b/server/core/providers/asr/xunfei_stream.py
 @@ -14,7 +14,7 @@ if TYPE_CHECKING:
@@ -2132,7 +2202,15 @@ index fa59ca3..f09dfac 100644
  from core.providers.asr.dto.dto import InterfaceType
  
  TAG = __name__
-@@ -108,7 +108,7 @@ class ASRProvider(ASRProviderBase):
+@@ -36,6 +36,7 @@ class ASRProvider(ASRProviderBase):
+         self.forward_task = None
+         self.is_processing = False
+         self.server_ready = False
++        self._session_reservation = None  # connect 尚未返回时的会话归属标记
+ 
+         # 讯飞配置
+         self.app_id = config.get("app_id")
+@@ -108,7 +109,7 @@ class ASRProvider(ASRProviderBase):
                  await self._start_recognition(conn)
              except Exception as e:
                  logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
@@ -2141,7 +2219,7 @@ index fa59ca3..f09dfac 100644
                  return
  
          # 发送当前音频数据
-@@ -117,10 +117,13 @@ class ASRProvider(ASRProviderBase):
+@@ -117,12 +118,17 @@ class ASRProvider(ASRProviderBase):
                  await self._send_audio_frame(pcm_frame, STATUS_CONTINUE_FRAME)
              except Exception as e:
                  logger.bind(tag=TAG).warning(f"发送音频数据时发生错误: {e}")
@@ -2155,8 +2233,12 @@ index fa59ca3..f09dfac 100644
 +        session_ws = None
          try:
              self.is_processing = True
++            # connect 返回前 asr_ws 仍为空；先预留会话归属，旧 cleanup 不得清掉本轮状态。
++            self._session_reservation = object()
              # 建立WebSocket连接
-@@ -131,29 +134,32 @@ class ASRProvider(ASRProviderBase):
+             ws_url = self.create_url()
+             logger.bind(tag=TAG).info(f"正在连接ASR服务: {ws_url[:50]}...")
+@@ -131,29 +137,33 @@ class ASRProvider(ASRProviderBase):
              if conn.client_listen_mode == "manual":
                  self.iat_params["eos"] = 60000
  
@@ -2169,6 +2251,7 @@ index fa59ca3..f09dfac 100644
                  close_timeout=10,
              )
 +            self.asr_ws = session_ws
++            self._session_reservation = None
  
              logger.bind(tag=TAG).info("ASR WebSocket连接已建立")
              self.server_ready = False
@@ -2193,7 +2276,7 @@ index fa59ca3..f09dfac 100644
                      except Exception as e:
                          logger.bind(tag=TAG).info(f"发送缓存音频数据时发生错误: {e}")
                          break
-@@ -162,15 +168,17 @@ class ASRProvider(ASRProviderBase):
+@@ -162,15 +172,18 @@ class ASRProvider(ASRProviderBase):
              logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
              if hasattr(e, "__cause__") and e.__cause__:
                  logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
@@ -2201,6 +2284,7 @@ index fa59ca3..f09dfac 100644
 -                await self.asr_ws.close()
 +            if session_ws is not None:
 +                await session_ws.close()
++            self._session_reservation = None
 +            if self.asr_ws is session_ws or self.asr_ws is None:
                  self.asr_ws = None
 -            self.is_processing = False
@@ -2217,7 +2301,7 @@ index fa59ca3..f09dfac 100644
              return
  
          audio_b64 = base64.b64encode(audio_data).decode("utf-8")
-@@ -183,14 +191,18 @@ class ASRProvider(ASRProviderBase):
+@@ -183,14 +196,18 @@ class ASRProvider(ASRProviderBase):
              },
          }
  
@@ -2240,7 +2324,7 @@ index fa59ca3..f09dfac 100644
                      result = json.loads(response)
                      logger.bind(tag=TAG).debug(f"收到ASR结果: {result}")
  
-@@ -223,7 +235,9 @@ class ASRProvider(ASRProviderBase):
+@@ -223,7 +240,9 @@ class ASRProvider(ASRProviderBase):
  
                      if status == 2:
                          logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
@@ -2251,7 +2335,7 @@ index fa59ca3..f09dfac 100644
                          break
  
                  except asyncio.TimeoutError:
-@@ -245,26 +259,34 @@ class ASRProvider(ASRProviderBase):
+@@ -245,26 +264,34 @@ class ASRProvider(ASRProviderBase):
              if hasattr(e, "__cause__") and e.__cause__:
                  logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
          finally:
@@ -2294,7 +2378,7 @@ index fa59ca3..f09dfac 100644
          except Exception as e:
              logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
              import traceback
-@@ -278,40 +300,35 @@ class ASRProvider(ASRProviderBase):
+@@ -278,40 +305,37 @@ class ASRProvider(ASRProviderBase):
          self.is_processing = False
  
      async def _send_stop_request(self):
@@ -2343,8 +2427,10 @@ index fa59ca3..f09dfac 100644
 -        # 清理任务引用
 -        self.forward_task = None
 +        # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-+        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-+        if self.asr_ws is session_ws or self.asr_ws is None:
++        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
++        if self.asr_ws is session_ws or (
++            self.asr_ws is None and self._session_reservation is None
++        ):
 +            self.asr_ws = None
 +            self.is_processing = False
 +            self.server_ready = False
@@ -2520,10 +2606,10 @@ index 0000000..bc6e9aa
 +    return None, bytes(item), "legacy"
 diff --git a/server/tests/test_bb8_voice_safety_r1.py b/server/tests/test_bb8_voice_safety_r1.py
 new file mode 100644
-index 0000000..9b60815
+index 0000000..ba95bed
 --- /dev/null
 +++ b/server/tests/test_bb8_voice_safety_r1.py
-@@ -0,0 +1,937 @@
+@@ -0,0 +1,1133 @@
 +"""BB-8 R1 voice safety regression tests (no hardware, no production service).
 +
 +Run from the controlled work copy:
@@ -3262,6 +3348,7 @@ index 0000000..9b60815
 +        self.recv_gate_after = recv_gate_after
 +        self.close_started = asyncio.Event()
 +        self.closed = False
++        self.sent = []
 +
 +    async def recv(self):
 +        if self.recv_gate is not None and len(self._messages) <= self.recv_gate_after:
@@ -3271,6 +3358,7 @@ index 0000000..9b60815
 +        raise websockets.ConnectionClosed(None, None)
 +
 +    async def send(self, data):
++        self.sent.append(data)
 +        return None
 +
 +    async def close(self):
@@ -3440,6 +3528,200 @@ index 0000000..9b60815
 +        await self._run_case(AliyunBlStreamProvider, {}, message, "_forward_results")
 +
 +    async def test_xunfei_old_cleanup_does_not_destroy_new_session(self):
++        encoded = base64.b64encode(
++            json.dumps(
++                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False
++            ).encode("utf-8")
++        ).decode("ascii")
++        message = json.dumps(
++            {
++                "header": {"code": 0, "status": 2},
++                "payload": {"result": {"text": encoded}},
++            }
++        )
++        await self._run_case(
++            XunfeiStreamProvider,
++            {"app_id": "test", "api_key": "test", "api_secret": "test"},
++            message,
++            "_forward_results",
++        )
++
++
++class TestStreamConnectReservationIsolation(unittest.IsolatedAsyncioTestCase):
++    """旧 cleanup 暂停在 close 时，新会话 connect 尚未返回的归属窗口。"""
++
++    async def _run_case(
++        self, provider_cls, config, message, forward_name, parse_response=False
++    ):
++        conn = make_conn()
++        provider = provider_cls(config, False)
++        conn.asr = provider
++
++        # 旧轮次：旧任务绑定到自己的 WebSocket 与 generation。
++        conn.audio_gate.rotate("old_round")
++        _, old_item = conn.enqueue_microphone_audio(b"old-frame" * 16)
++        old_generation, _, _ = unpack_gated_frame(old_item)
++        conn.current_audio_generation = old_generation
++        conn.asr_audio = [b"old-frame"] * 16
++
++        old_close_gate = asyncio.Event()
++        old_ws = _BlockingCloseWs([message], close_gate=old_close_gate)
++        provider.asr_ws = old_ws
++        provider.is_processing = True
++        provider.server_ready = True
++        provider.forward_task = None
++        old_task_id = "old-task"
++        if hasattr(provider, "task_id"):
++            provider.task_id = old_task_id
++        if parse_response:
++            provider.parse_response = MagicMock(return_value=message)
++
++        calls = []
++
++        async def handle_voice_stop(c, audio, source_generation=SOURCE_GENERATION_UNSET):
++            calls.append(source_generation)
++            if source_generation == old_generation:
++                # 模拟旧轮次同步停止：释放 processing/asr_ws，使新会话得以启动。
++                provider.stop_ws_connection()
++                provider.asr_ws = None
++                provider.is_processing = False
++                return
++            return await ASRProviderBase.handle_voice_stop(
++                provider, c, audio, source_generation=source_generation
++            )
++
++        provider.handle_voice_stop = handle_voice_stop
++        provider.speech_to_text_wrapper = AsyncMock(return_value=("新轮文本", None))
++
++        new_recv_gate = asyncio.Event()
++        new_ws = _BlockingCloseWs(
++            [message, message] if parse_response else [message],
++            recv_gate=new_recv_gate,
++            recv_gate_after=1,
++        )
++        connect_gate = asyncio.Event()
++        connect_started = asyncio.Event()
++
++        async def gated_connect(*args, **kwargs):
++            connect_started.set()
++            await connect_gate.wait()
++            return new_ws
++
++        forward = getattr(provider, forward_name)
++        forward_args = [conn, old_generation, old_ws]
++        if forward_name == "_forward_results" and isinstance(
++            provider, AliyunBlStreamProvider
++        ):
++            forward_args.append(old_task_id)
++
++        with patch.object(
++            websockets, "connect", new=gated_connect
++        ), patch.object(
++            asr_base, "enqueue_asr_report", new=MagicMock()
++        ), patch.object(
++            asr_base, "startToChat", new=AsyncMock()
++        ) as brain:
++            old_task = asyncio.create_task(forward(*forward_args))
++            await asyncio.wait_for(old_ws.close_started.wait(), 2)
++            self.assertIsNone(provider.asr_ws)
++            self.assertFalse(provider.is_processing)
++
++            # 新轮次 rotate 后，在同一个 Provider 实例上启动新会话。
++            conn.audio_gate.rotate("new_round")
++            _, new_item = conn.enqueue_microphone_audio(b"new-frame" * 16)
++            new_generation, _, _ = unpack_gated_frame(new_item)
++            conn.current_audio_generation = new_generation
++            conn.asr_audio = [b"new-frame"] * 16
++            conn.client_voice_stop = False
++
++            new_session_task = asyncio.create_task(
++                provider.receive_audio(conn, b"new-frame", True)
++            )
++            # 新会话已进入 connect 但尚未返回：asr_ws 仍为空，归属必须先预留。
++            await asyncio.wait_for(connect_started.wait(), 2)
++            self.assertIsNone(provider.asr_ws)
++            self.assertTrue(provider.is_processing)
++            self.assertIsNotNone(provider._session_reservation)
++            self.assertIsNone(provider.forward_task)
++            reserved_task_id = getattr(provider, "task_id", None)
++            if isinstance(provider, AliyunBlStreamProvider):
++                self.assertIsNotNone(reserved_task_id)
++                self.assertNotEqual(reserved_task_id, old_task_id)
++
++            # 旧 close 返回；旧 cleanup 不得仅凭 asr_ws is None 清空新会话状态。
++            old_close_gate.set()
++            await asyncio.wait_for(old_task, 2)
++            self.assertTrue(old_ws.closed)
++            self.assertIsNone(provider.asr_ws)
++            self.assertTrue(provider.is_processing)
++            self.assertIsNotNone(provider._session_reservation)
++            self.assertIsNone(provider.forward_task)
++            if isinstance(provider, AliyunBlStreamProvider):
++                self.assertEqual(provider.task_id, reserved_task_id)
++
++            # 释放新 connect：新会话完成建立并保有全部共享状态。
++            connect_gate.set()
++            await asyncio.wait_for(new_session_task, 2)
++            self.assertIs(provider.asr_ws, new_ws)
++            self.assertTrue(provider.is_processing)
++            self.assertIsNone(provider._session_reservation)
++            self.assertIsNotNone(provider.forward_task)
++            new_task = provider.forward_task
++            self.assertFalse(new_task.done())
++            if isinstance(provider, AliyunBlStreamProvider):
++                # run-task 必须使用 connect 前捕获的局部 task_id，不能回读共享字段。
++                self.assertEqual(provider.task_id, reserved_task_id)
++                run_task = [
++                    json.loads(sent)
++                    for sent in new_ws.sent
++                    if isinstance(sent, str) and '"run-task"' in sent
++                ]
++                self.assertEqual(len(run_task), 1)
++                self.assertEqual(run_task[0]["header"]["task_id"], reserved_task_id)
++
++            # 新任务仍能正常完成并派发 Brain。
++            new_recv_gate.set()
++            await asyncio.wait_for(new_task, 5)
++            self.assertEqual(calls, [old_generation, new_generation])
++            brain.assert_awaited_once()
++            self.assertEqual(brain.await_args.kwargs["source_generation"], new_generation)
++
++    async def test_doubao_connect_window_is_not_cleared_by_old_cleanup(self):
++        message = {
++            "payload_msg": {
++                "result": {
++                    "text": "你好",
++                    "utterances": [{"definite": True, "text": "你好"}],
++                },
++                "audio_info": {"duration": 100},
++            }
++        }
++        await self._run_case(
++            DoubaoStreamProvider,
++            {"appid": "test", "access_token": "test", "enable_multilingual": False},
++            message,
++            "_forward_asr_results",
++            parse_response=True,
++        )
++
++    async def test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup(self):
++        message = json.dumps(
++            {
++                "header": {"event": "result-generated"},
++                "payload": {
++                    "output": {
++                        "sentence": {
++                            "text": "你好",
++                            "sentence_end": True,
++                            "end_time": 123,
++                        }
++                    }
++                },
++            }
++        )
++        await self._run_case(AliyunBlStreamProvider, {}, message, "_forward_results")
++
++    async def test_xunfei_connect_window_is_not_cleared_by_old_cleanup(self):
 +        encoded = base64.b64encode(
 +            json.dumps(
 +                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False

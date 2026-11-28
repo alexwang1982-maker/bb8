@@ -6,7 +6,7 @@
 
 | 门禁项 | 状态 | 说明 |
 | --- | --- | --- |
-| R1 自动化新增测试 | PASS | 30/30，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
+| R1 自动化新增测试 | PASS | 33/33，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
 | 既有安全回归测试 | FAIL + 挂起（基线固有） | 见 `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 与 `R1_TEST_EVIDENCE.md` |
 | 密钥明确 | **BLOCKED** | 三路密钥无生产注入配置，见 `R1_KEY_INJECTION_AUDIT.md` |
 | 实例确认 | **BLOCKED** | 两个 bridge 实例（8900/8910）目标端口与启动来源未最终确认 |
@@ -27,7 +27,8 @@
 | `server/core/handle/textHandler/listenMessageHandler.py` | listen start/detect 可信拾音；复审修正 stop 保存源 generation |
 | `server/core/providers/asr/base.py` | 双队列消费、旧 generation 丢弃；复审修正 `source_generation` 哨兵与显式 `None` 拒绝 |
 | `server/core/providers/asr/{doubao,aliyun,aliyunbl,xunfei}_stream.py` | STREAM 会话 generation/WS/task_id 作为任务独立入参；取消实例共享 generation；cleanup 只关闭本会话 WS，close 后按归属确认再清共享状态 |
-| `server/tests/test_bb8_voice_safety_r1.py` | 新增：R1 回归测试（30 用例，含 4 个 STREAM generation 隔离 + 4 个会话资源隔离用例） |
+| `server/core/providers/asr/{doubao,aliyunbl,xunfei}_stream.py` | 本轮新增：connect 前预留会话归属；cleanup 仅凭 `asr_ws is None` 不再清空新会话状态；百炼 task_id 在建立前捕获为局部变量（aliyun 无同类时序，未改） |
+| `server/tests/test_bb8_voice_safety_r1.py` | 新增：R1 回归测试（33 用例，含 4 个 STREAM generation 隔离 + 4 个会话资源隔离 + 3 个 connect 窗口隔离用例） |
 | `evidence/*` | 新增/更新：证据与方案文档 |
 
 `bridge/bridge.py` 已恢复基线，**不在 R1 交付范围内**；视觉另立功能。

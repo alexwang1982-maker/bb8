@@ -26,6 +26,7 @@ class ASRProvider(ASRProviderBase):
         self.is_processing = False
         self.server_ready = False  # 服务器准备状态
         self.task_id = None  # 当前任务ID
+        self._session_reservation = None  # connect 尚未返回时的会话归属标记
 
         # 阿里百炼配置
         self.api_key = config.get("api_key")
@@ -86,14 +87,17 @@ class ASRProvider(ASRProviderBase):
                 self.max_sentence_silence = 6000
 
             self.is_processing = True
-            self.task_id = uuid.uuid4().hex
+            # connect 返回前先捕获本轮 task_id，并预留会话归属，避免旧 cleanup 清空。
+            session_task_id = uuid.uuid4().hex
+            self.task_id = session_task_id
+            self._session_reservation = object()
 
             # 建立WebSocket连接；会话 WS/task_id 是本轮独有。
             headers = {
                 "Authorization": f"Bearer {self.api_key}"
             }
 
-            logger.bind(tag=TAG).debug(f"正在连接阿里百炼ASR服务, task_id: {self.task_id}")
+            logger.bind(tag=TAG).debug(f"正在连接阿里百炼ASR服务, task_id: {session_task_id}")
 
             session_ws = await websockets.connect(
                 self.ws_url,
@@ -104,7 +108,7 @@ class ASRProvider(ASRProviderBase):
                 close_timeout=5,
             )
             self.asr_ws = session_ws
-            session_task_id = self.task_id
+            self._session_reservation = None
 
             logger.bind(tag=TAG).debug("WebSocket连接建立成功")
 
@@ -122,7 +126,11 @@ class ASRProvider(ASRProviderBase):
             logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
             if session_ws is not None:
                 await session_ws.close()
-            if self.asr_ws is session_ws or self.asr_ws is None:
+            self._session_reservation = None
+            # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
+            if self.asr_ws is session_ws or (
+                self.asr_ws is None and self._session_reservation is None
+            ):
                 self.asr_ws = None
                 self.is_processing = False
                 self.task_id = None
@@ -319,8 +327,10 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
 
         # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
-        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
-        if self.asr_ws is session_ws or self.asr_ws is None:
+        # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
+        if self.asr_ws is session_ws or (
+            self.asr_ws is None and self._session_reservation is None
+        ):
             self.asr_ws = None
             self.is_processing = False
             self.server_ready = False
