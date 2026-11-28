@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from core.connection import ConnectionHandler
 from config.logger import setup_logging
 from wsgiref.handlers import format_date_time
-from core.providers.asr.base import ASRProviderBase
+from core.providers.asr.base import ASRProviderBase, SOURCE_GENERATION_UNSET
 from core.providers.asr.dto.dto import InterfaceType
 
 TAG = __name__
@@ -121,6 +121,8 @@ class ASRProvider(ASRProviderBase):
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
+        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
+        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
         try:
             self.is_processing = True
             # 建立WebSocket连接
@@ -187,6 +189,7 @@ class ASRProvider(ASRProviderBase):
 
     async def _forward_results(self, conn: "ConnectionHandler"):
         """转发识别结果"""
+        source_generation = getattr(self, "_stream_source_generation", None)
         try:
             while not conn.stop_event.is_set():
                 try:
@@ -223,7 +226,9 @@ class ASRProvider(ASRProviderBase):
 
                     if status == 2:
                         logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
-                        await self.handle_voice_stop(conn, conn.asr_audio)
+                        await self.handle_voice_stop(
+                            conn, conn.asr_audio, source_generation=source_generation
+                        )
                         break
 
                 except asyncio.TimeoutError:
@@ -247,10 +252,14 @@ class ASRProvider(ASRProviderBase):
         finally:
             # 清理连接资源
             await self._cleanup()
+            self._stream_source_generation = None
             conn.reset_audio_states()
 
     async def handle_voice_stop(
-        self, conn: "ConnectionHandler", asr_audio_task: List[bytes]
+        self,
+        conn: "ConnectionHandler",
+        asr_audio_task: List[bytes],
+        source_generation=SOURCE_GENERATION_UNSET,
     ):
         """处理语音停止，发送最后一帧并处理识别结果"""
         try:
@@ -264,7 +273,9 @@ class ASRProvider(ASRProviderBase):
                 except Exception as e:
                     logger.bind(tag=TAG).error(f"发送停止请求失败: {e}")
 
-            await super().handle_voice_stop(conn, asr_audio_task)
+            await super().handle_voice_stop(
+                conn, asr_audio_task, source_generation=source_generation
+            )
         except Exception as e:
             logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
             import traceback

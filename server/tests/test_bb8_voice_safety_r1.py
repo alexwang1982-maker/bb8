@@ -17,7 +17,7 @@ import threading
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -383,6 +383,62 @@ class TestListenStopGenerationLifecycle(unittest.IsolatedAsyncioTestCase):
         ) as brain:
             await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=None)
             stt.assert_not_awaited()
+            brain.assert_not_awaited()
+
+    async def test_explicit_none_rejected_even_when_connection_generation_valid(self):
+        """旧回调明确传 None：即使连接侧 generation 有效也不得借用。"""
+        conn, generation = await self._gated_conn()
+        self.assertTrue(conn.audio_gate.is_current(generation))
+
+        identify = AsyncMock(return_value="owner")
+        enroll = AsyncMock(return_value=True)
+        conn.voiceprint_provider = types.SimpleNamespace(
+            identify_speaker=identify, enroll_speaker=enroll, speaker_ids=["owner"]
+        )
+
+        with patch.object(conn.asr, "speech_to_text_wrapper", new=AsyncMock()) as stt, patch.object(
+            conn.asr, "stop_ws_connection", new=MagicMock()
+        ) as stop_ws, patch.object(
+            asr_base, "enqueue_asr_report", new=MagicMock()
+        ) as report, patch.object(asr_base, "startToChat", new=AsyncMock()) as brain:
+            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=None)
+            stt.assert_not_awaited()
+            stop_ws.assert_not_called()
+            report.assert_not_called()
+            identify.assert_not_awaited()
+            enroll.assert_not_awaited()
+            brain.assert_not_awaited()
+
+    async def test_stale_stream_captured_generation_rejected_after_new_round(self):
+        """STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。"""
+        conn, old_generation = await self._gated_conn()
+        # 模拟新一轮 reset/abort：generation 必须递增。
+        conn.audio_gate.rotate("new_round")
+        _, new_item = conn.enqueue_microphone_audio(b"new-round-frame")
+        new_generation, _, _ = unpack_gated_frame(new_item)
+        conn.current_audio_generation = new_generation
+        self.assertTrue(conn.audio_gate.is_current(new_generation))
+        self.assertNotEqual(old_generation, new_generation)
+
+        identify = AsyncMock(return_value="owner")
+        enroll = AsyncMock(return_value=True)
+        conn.voiceprint_provider = types.SimpleNamespace(
+            identify_speaker=identify, enroll_speaker=enroll, speaker_ids=["owner"]
+        )
+
+        with patch.object(conn.asr, "speech_to_text_wrapper", new=AsyncMock()) as stt, patch.object(
+            conn.asr, "stop_ws_connection", new=MagicMock()
+        ) as stop_ws, patch.object(
+            asr_base, "enqueue_asr_report", new=MagicMock()
+        ) as report, patch.object(asr_base, "startToChat", new=AsyncMock()) as brain:
+            await conn.asr.handle_voice_stop(
+                conn, [b"frame"], source_generation=old_generation
+            )
+            stt.assert_not_awaited()
+            stop_ws.assert_not_called()
+            report.assert_not_called()
+            identify.assert_not_awaited()
+            enroll.assert_not_awaited()
             brain.assert_not_awaited()
 
 

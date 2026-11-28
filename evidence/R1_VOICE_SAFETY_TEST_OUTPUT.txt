@@ -33,6 +33,9 @@ test_concurrent_gate_changes_keep_generation_consistent (tests.test_bb8_voice_sa
 nt_gate_changes_keep_generation_consistent) ... ok
 test_rotate_holds_lock_for_whole_state_change (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_rotate_holds_lock_
 for_whole_state_change) ... ok
+test_explicit_none_rejected_even_when_connection_generation_valid (tests.test_bb8_voice_safety_r1.TestListenStopGenerat
+ionLifecycle.test_explicit_none_rejected_even_when_connection_generation_valid)
+旧回调明确传 None：即使连接侧 generation 有效也不得借用。 ... ok
 test_listen_stop_passes_source_generation_before_reset (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
 e.test_listen_stop_passes_source_generation_before_reset) ... ok
 test_new_round_during_asr_drops_brain_dispatch (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_n
@@ -41,6 +44,9 @@ test_none_generation_is_not_authorization (tests.test_bb8_voice_safety_r1.TestLi
 eneration_is_not_authorization) ... ok
 test_old_voiceprint_enrollment_dropped_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
 e.test_old_voiceprint_enrollment_dropped_after_new_round) ... ok
+test_stale_stream_captured_generation_rejected_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGeneration
+Lifecycle.test_stale_stream_captured_generation_rejected_after_new_round)
+STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。 ... ok
 test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_
 stale_sentence_stop_does_not_clear_current_playback) ... ok
 test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clear
@@ -49,6 +55,6 @@ test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_v
 est_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
 
 ----------------------------------------------------------------------
-Ran 20 tests in 0.708s
+Ran 22 tests in 0.626s
 
 OK

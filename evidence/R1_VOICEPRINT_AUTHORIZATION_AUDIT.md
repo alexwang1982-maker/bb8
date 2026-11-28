@@ -44,4 +44,4 @@
 
 ## 5. 测试覆盖状态
 
-本轮新增 20 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。
+本轮新增 22 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、显式 `None`/STREAM 旧回调、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。

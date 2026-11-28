@@ -1,9 +1,9 @@
 diff --git a/evidence/R1_BARGE_IN_SAFETY_DESIGN.md b/evidence/R1_BARGE_IN_SAFETY_DESIGN.md
 new file mode 100644
-index 0000000..4f2a2ca
+index 0000000..29002bf
 --- /dev/null
 +++ b/evidence/R1_BARGE_IN_SAFETY_DESIGN.md
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,52 @@
 +# BB-8 R1 Barge-in 与音频来源门控安全设计
 +
 +本设计只描述本轮已实现的可测试门控，不宣称声纹已形成工具授权系统。
@@ -31,7 +31,9 @@ index 0000000..4f2a2ca
 +- 消费侧 `asr_text_priority_thread` 在派发前校验 generation；`handleAudioMessage()` 和 `handle_voice_stop()` 在识别前后再次校验。
 +- `reset_audio_states(rotate=True)`（默认）在锁内同时完成 generation 递增、ASR/barge 队列清空、VAD 状态复位、`asr_audio`/`_barge_buf` 清空；`rotate=False` 仅用于 `listen stop` 收尾，通过 `AudioSourceGate.seal()` 在同一锁内清队列但保留本轮 generation，使刚复制出的音频仍属于本轮。
 +- `AudioSourceGate.rotate/suppress/open` 的状态读取、generation 递增、双队列清理与 `normal_open` 写入全部在 `_rotate_locked()` 的同一临界区内完成，无锁窗口。
-+- `handle_voice_stop()` 使用显式 `source_generation`；ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 直接 fail-closed，不是有效授权。
++- `handle_voice_stop()` 使用哨兵区分“未传参数”与“明确传 `None`”：未传才回退连接当前 generation（兼容旧调用）；明确 `None` 立即 fail-closed，绝不回退借用当前 generation。
++- STREAM ASR 在识别会话建立时捕获 `conn.current_audio_generation` 为会话源 generation，结果回调显式传回；`reset/abort` 后该值失效，旧回调不能借用新轮次 generation。
++- ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 不是有效授权。
 +- `handleAbortMessage()` 在进入时记录 playback token + sentence；等待 stop 发送期间若新轮次 TTS 已启动，旧 Abort 不再执行 `clearSpeakStatus()`，因此不会清除新播放态或重新开放音频入口。
 +- `clear_queues()` 也清空两个音频队列和 `asr_audio`，保证 abort 路径不残留。
 +- `client_is_speaking` 不再是唯一依据：必须同时满足 `tts_playback_active` 与 `tts_playback_token` 才认定播放态。
@@ -130,10 +132,10 @@ index 0000000..f1be65c
 +- 密钥：见 `R1_KEY_INJECTION_AUDIT.md`，部署门禁 BLOCKED。
 diff --git a/evidence/R1_DELIVERY_REPORT.md b/evidence/R1_DELIVERY_REPORT.md
 new file mode 100644
-index 0000000..6f1eb43
+index 0000000..8f10c64
 --- /dev/null
 +++ b/evidence/R1_DELIVERY_REPORT.md
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,102 @@
 +# BB-8 R1 复审修正交付报告
 +
 +## 1. 交付范围
@@ -146,11 +148,12 @@ index 0000000..6f1eb43
 +
 +### 2.1 `listen stop` generation 生命周期
 +
-+- `handle_voice_stop(..., source_generation=None)` 新增显式源 generation 参数；未显式传入时回退连接当前值，`None` 由 `is_current(None) == False` fail-closed。
++- `handle_voice_stop()` 使用哨兵 `SOURCE_GENERATION_UNSET` 区分“未传参数”和“明确传 `None`”：未传才回退连接当前 generation（兼容旧调用）；**明确 `None` 立即返回**，不回退、不借用当前 generation，后续处理全部不启动。
 +- `listenMessageHandler` 的 `stop` 分支在 `reset_audio_states()` **之前**保存 `current_audio_generation`，以 `rotate=False` 收尾：通过 `AudioSourceGate.seal()` 在同锁内清队列但保留本轮 generation，避免刚复制出的音频被自己的收尾误判为旧轮。
 +- `reset_audio_states(rotate=True)` 仍为真正的新一轮 reset/abort：rotate generation、清双队列、清空 `current_audio_generation`。
 +- ASR 开始后、声纹自动注册前、最终 `startToChat()` 前均重新校验 generation；新一轮 reset/abort 后旧 ASR 结果、声纹识别结果、自动注册与 Brain 派发全部丢弃。
 +- 自动 VAD 停止路径（`asr/base.py receive_audio`）同样显式传入 reset 前的 generation。
++- **STREAM 全路径**（`doubao_stream.py`、`aliyun_stream.py`、`aliyunbl_stream.py`、`xunfei_stream.py`）在识别会话建立时捕获当时的 `current_audio_generation` 为会话源 generation，结果回调显式传回；`xunfei_stream.py` 的覆写也透传该参数。新轮次 rotate 后旧会话回调被拒绝，旧识别不能进入新轮次 Brain。
 +
 +### 2.2 `handleAbortMessage()` 轮次隔离
 +
@@ -178,9 +181,9 @@ index 0000000..6f1eb43
 +
 +## 4. 测试证据
 +
-+### 4.1 R1 新增测试：20/20 PASS
++### 4.1 R1 新增测试：22/22 PASS
 +
-+`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 20 tests in 0.708s` / `OK`。较上一版（14 项，含 2 项视觉）净增 8 项针对性回归：
++`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 22 tests in 0.626s` / `OK`。较上一版（20 项）新增 2 项最终复审回归：
 +
 +| 用例 | 断言 |
 +| --- | --- |
@@ -188,16 +191,18 @@ index 0000000..6f1eb43
 +| `test_new_round_during_asr_drops_brain_dispatch` | 识别中新一轮 rotate → Brain 不被调用 |
 +| `test_old_voiceprint_enrollment_dropped_after_new_round` | 新轮次后旧声纹自动注册不执行 |
 +| `test_none_generation_is_not_authorization` | `None` 不是授权，STT 不启动 |
++| **`test_explicit_none_rejected_even_when_connection_generation_valid`** | 连接 generation 有效但旧回调显式传 `None`：STT、`stop_ws_connection`、ASR 上报、声纹识别、自动注册、Brain 全部拒绝 |
++| **`test_stale_stream_captured_generation_rejected_after_new_round`** | STREAM 捕获的旧 generation 在新轮次后失效；连接当前 generation 有效也不得派发 |
 +| `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清新 token 播放态，入口保持关闭 |
 +| `test_abort_without_new_round_still_clears` | 正常 Abort 仍收口 |
 +| `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
 +| `test_concurrent_gate_changes_keep_generation_consistent` | 6 线程 × 300 次并发变更 generation 一致 |
 +
-+（其中 generation 生命周期 4 项、Abort 2 项、锁原子性 2 项，共 8 项；原 14 项扣除 2 项视觉测试后为 12 项，合计 20 项。）
++（generation 生命周期 6 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 22 项。）
 +
 +### 4.2 既有安全回归：基线固有 FAIL + 挂起
 +
-+`R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 如实记录：`test_ambiguous_head_result_stops_without_second_motor_or_post_status ... FAIL`，随后 `test_concurrent_trigger_is_rejected_as_busy` 挂起，60 秒后终止进程树，未产出 `Ran/OK/FAILED` 汇总。同一表现此前已在未修改基线 8197bbb 复现；本轮未修复、未宣称通过。
++`R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 如实记录：`test_ambiguous_head_result_stops_without_second_motor_or_post_status ... FAIL`，随后 `test_concurrent_trigger_is_rejected_as_busy` 挂起，60 秒后终止进程树，未产出 `Ran/OK/FAILED` 汇总。同一表现此前已在未修改基线 8197bbb 复现；本轮保留原始失败记录，未重跑、未修复、未宣称通过。
 +
 +### 4.3 真实验收边界
 +
@@ -208,7 +213,7 @@ index 0000000..6f1eb43
 +| 文件 | 内容 |
 +| --- | --- |
 +| `R1_FULL_DIFF.patch` | 从基线 `8197bbb` 到最终工作副本的完整 diff（不含补丁文件自身，避免自引用） |
-+| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 20 项测试原始输出 |
++| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 22 项测试原始输出 |
 +| `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` | 既有安全套件 FAIL/挂起原始记录 |
 +| `R1_TEST_EVIDENCE.md` | 测试覆盖与验收边界 |
 +| `WORKCOPY_AFTER_SHA256.csv` | 最终工作副本关键文件 size + SHA256 |
@@ -235,7 +240,7 @@ index 0000000..6f1eb43
 +部署仍 BLOCKED：密钥注入未明确、bridge 实例归属未最终确认、真人声学验收未执行。等待独立复审通过后，由获批人员在维护窗口内按 `R1_DEPLOYMENT_ROLLBACK_PLAN.md` 执行。
 diff --git a/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md b/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md
 new file mode 100644
-index 0000000..87053f1
+index 0000000..d318700
 --- /dev/null
 +++ b/evidence/R1_DEPLOYMENT_ROLLBACK_PLAN.md
 @@ -0,0 +1,74 @@
@@ -247,7 +252,7 @@ index 0000000..87053f1
 +
 +| 门禁项 | 状态 | 说明 |
 +| --- | --- | --- |
-+| R1 自动化新增测试 | PASS | 20/20，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
++| R1 自动化新增测试 | PASS | 22/22，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
 +| 既有安全回归测试 | FAIL + 挂起（基线固有） | 见 `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 与 `R1_TEST_EVIDENCE.md` |
 +| 密钥明确 | **BLOCKED** | 三路密钥无生产注入配置，见 `R1_KEY_INJECTION_AUDIT.md` |
 +| 实例确认 | **BLOCKED** | 两个 bridge 实例（8900/8910）目标端口与启动来源未最终确认 |
@@ -460,13 +465,13 @@ index 0000000..e8d9081
 +R1 用来源门控把「播放态帧」隔离到 barge 队列，保证即使没有 AEC 也不会把 TTS 自声当用户指令；这是**隔离**而非**消除**。真实 AEC 是后续独立阶段，二者不冲突、可叠加。
 diff --git a/evidence/R1_TEST_EVIDENCE.md b/evidence/R1_TEST_EVIDENCE.md
 new file mode 100644
-index 0000000..8e78ccd
+index 0000000..39cd1b0
 --- /dev/null
 +++ b/evidence/R1_TEST_EVIDENCE.md
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,76 @@
 +# BB-8 R1 测试与验收证据（复审修正后）
 +
-+## 1. R1 安全测试：20/20 PASS
++## 1. R1 安全测试：22/22 PASS
 +
 +命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 +
@@ -477,7 +482,7 @@ index 0000000..8e78ccd
 +原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 +
 +```
-+Ran 20 tests in 0.708s
++Ran 22 tests in 0.626s
 +OK
 +```
 +
@@ -500,6 +505,8 @@ index 0000000..8e78ccd
 +| | `test_new_round_during_asr_drops_brain_dispatch` | 识别等待期间新一轮 reset → 旧结果不进 Brain |
 +| | `test_old_voiceprint_enrollment_dropped_after_new_round` | 新轮次后旧声纹自动注册不执行 |
 +| | `test_none_generation_is_not_authorization` | `None` 不是有效授权，`is_current(None)=False` 且 STT 不启动 |
++| **最终复审新增：显式 None / STREAM** | `test_explicit_none_rejected_even_when_connection_generation_valid` | 连接 generation 有效但旧回调显式传 `None`：STT、声纹识别、自动注册、Brain 全部拒绝 |
++| | `test_stale_stream_captured_generation_rejected_after_new_round` | STREAM 会话捕获的旧 generation 在新轮次后失效，即使连接当前 generation 有效也不得派发 |
 +| **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 +| | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 +| **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -523,7 +530,7 @@ index 0000000..8e78ccd
 +test_concurrent_trigger_is_rejected_as_busy ...     <-- 此处挂起
 +```
 +
-+60 秒后按进程树终止，**未产出 `Ran/OK/FAILED` 汇总**。同一失败与挂起此前已在未修改基线 worktree（8197bbb）复现，属既有问题，本轮**未尝试修复**（超出 R1 语音安全范围）。因此不能宣称「既有 33 用例全部通过」。
++60 秒后按进程树终止，**未产出 `Ran/OK/FAILED` 汇总**。同一失败与挂起此前已在未修改基线 worktree（8197bbb）复现，属既有问题，本轮**未尝试修复**（超出 R1 语音安全范围）。原始记录保留不变；本轮未重跑该套件，因此不能宣称「既有 33 用例全部通过」。
 +
 +## 3. 视觉范围
 +
@@ -537,10 +544,10 @@ index 0000000..8e78ccd
 +
 +## 5. 结论
 +
-+三项复审并发问题均有针对性回归测试且通过；既有安全套件的失败/挂起如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
++三项复审并发问题及最终复审的显式 `None`/STREAM 旧回调问题均有针对性回归测试且通过（22/22）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
 diff --git a/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md b/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md
 new file mode 100644
-index 0000000..8c1a79f
+index 0000000..4c05cf8
 --- /dev/null
 +++ b/evidence/R1_VOICEPRINT_AUTHORIZATION_AUDIT.md
 @@ -0,0 +1,47 @@
@@ -590,13 +597,13 @@ index 0000000..8c1a79f
 +
 +## 5. 测试覆盖状态
 +
-+本轮新增 20 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。
++本轮新增 22 项测试覆盖门控、队列、TTS 状态、WebSocket 路由、`listen stop` generation 生命周期、显式 `None`/STREAM 旧回调、Abort 轮次隔离与门控原子性；不覆盖工具级声纹授权。视觉路由测试已随视觉功能从 R1 移除。生产 `tests/` 中仍无 `voiceprint`、`identify_speaker`、`enroll_speaker`、`current_speaker`、`speakers_info` 相关测试。
 diff --git a/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt b/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt
 new file mode 100644
-index 0000000..98cd2cb
+index 0000000..5c2b31e
 --- /dev/null
 +++ b/evidence/R1_VOICE_SAFETY_TEST_OUTPUT.txt
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,60 @@
 +﻿python.exe : G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmp
 +eg or avconv - defaulting to ffmpeg, but may not work
 +所在位置 行:1 字符: 1
@@ -632,6 +639,9 @@ index 0000000..98cd2cb
 +nt_gate_changes_keep_generation_consistent) ... ok
 +test_rotate_holds_lock_for_whole_state_change (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_rotate_holds_lock_
 +for_whole_state_change) ... ok
++test_explicit_none_rejected_even_when_connection_generation_valid (tests.test_bb8_voice_safety_r1.TestListenStopGenerat
++ionLifecycle.test_explicit_none_rejected_even_when_connection_generation_valid)
++旧回调明确传 None：即使连接侧 generation 有效也不得借用。 ... ok
 +test_listen_stop_passes_source_generation_before_reset (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
 +e.test_listen_stop_passes_source_generation_before_reset) ... ok
 +test_new_round_during_asr_drops_brain_dispatch (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_n
@@ -640,6 +650,9 @@ index 0000000..98cd2cb
 +eneration_is_not_authorization) ... ok
 +test_old_voiceprint_enrollment_dropped_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycl
 +e.test_old_voiceprint_enrollment_dropped_after_new_round) ... ok
++test_stale_stream_captured_generation_rejected_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGeneration
++Lifecycle.test_stale_stream_captured_generation_rejected_after_new_round)
++STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。 ... ok
 +test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_
 +stale_sentence_stop_does_not_clear_current_playback) ... ok
 +test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clear
@@ -648,24 +661,28 @@ index 0000000..98cd2cb
 +est_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
 +
 +----------------------------------------------------------------------
-+Ran 20 tests in 0.708s
++Ran 22 tests in 0.626s
 +
 +OK
 diff --git a/evidence/WORKCOPY_AFTER_SHA256.csv b/evidence/WORKCOPY_AFTER_SHA256.csv
 new file mode 100644
-index 0000000..8348a8f
+index 0000000..5c8f960
 --- /dev/null
 +++ b/evidence/WORKCOPY_AFTER_SHA256.csv
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,13 @@
 +bridge/bridge.py,98558,942b7ebf1bee39ac0a00848de53ef90fe3110c511a200283f54e19e9bc933e60
 +server/core/connection.py,86278,a31e32c4e53717bcaaa1b169fa71c48655ac1b372bde3f600bb85cbe06935223
 +server/core/handle/abortHandle.py,1391,8c6147a77f365bcdc6d5ce63ad14100e20c6954c378b9ec5f559740bdbac038c
 +server/core/handle/receiveAudioHandle.py,13731,b30ab481916e998a767cb1173255500f27bfef0fcba255655e2175b7aec5f477
 +server/core/handle/sendAudioHandle.py,13442,b09ee59468b0c0ce11b0f607fc97fe944655e8b994db5cbeea2bcf8979e64f44
 +server/core/handle/textHandler/listenMessageHandler.py,6993,59b5df90b36323c29ada2da47c9c2cf7e46a0091f613f8651acb6cca8332b196
-+server/core/providers/asr/base.py,17137,9938eb03c8de312077c49c0cc705b2e63659190f89c766fac5960e22914dd52c
++server/core/providers/asr/aliyun_stream.py,14393,8c88239a4d21aa5afb6d3d1f3feb169d41802458990985c5fbb4ef641cf7f6af
++server/core/providers/asr/aliyunbl_stream.py,13704,92ea8bcd88a8076e0b284c4f7691e25a6a9c5e1e4da770b2df7b7dbdf6e13bfd
++server/core/providers/asr/base.py,17611,a5fc886eeab20a60998a84a96d2b800b0c3badf1557d61e79e543e1add15402f
++server/core/providers/asr/doubao_stream.py,20490,575a5265584488f3af4b594fdd05aa20b0c839d84a2c2525cb0ee418fd67eddb
++server/core/providers/asr/xunfei_stream.py,13873,af07fbe77e668b17014e61b6772fa2694109eea226230d97d2633627e11c05dd
 +server/core/utils/audio_source_gate.py,5589,053165e680972d895a97ef69f1271534045e5aca88aa2756802764d8d9d98c51
-+server/tests/test_bb8_voice_safety_r1.py,18326,d32f348e7b097f8a6ed0bd0c2d6eae3c78188bd3b79abd0ff2a5935ac9d6ce41
++server/tests/test_bb8_voice_safety_r1.py,21175,29e25d31e9162b36667b0657a902972af45e3a14f0df0efae7caeb09f557be9c
 diff --git a/server/core/connection.py b/server/core/connection.py
 index 196d0f1..a879105 100644
 --- a/server/core/connection.py
@@ -1211,8 +1228,96 @@ index d0e5684..06c6258 100644
                  elif is_wakeup_words:
                      conn.just_woken_up = True
                      # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）
+diff --git a/server/core/providers/asr/aliyun_stream.py b/server/core/providers/asr/aliyun_stream.py
+index 74bf613..a6d5fdd 100644
+--- a/server/core/providers/asr/aliyun_stream.py
++++ b/server/core/providers/asr/aliyun_stream.py
+@@ -149,6 +149,8 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _start_recognition(self, conn: "ConnectionHandler"):
+         """开始识别会话"""
++        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
++        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+         if self._is_token_expired():
+             self._refresh_token()
+         
+@@ -195,6 +197,7 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _forward_results(self, conn: "ConnectionHandler"):
+         """转发识别结果"""
++        source_generation = getattr(self, "_stream_source_generation", None)
+         try:
+             while not conn.stop_event.is_set():
+                 # 获取当前连接的音频数据
+@@ -252,12 +255,12 @@ class ASRProvider(ASRProviderBase):
+                                 # 手动模式下，只有在收到stop信号后才触发处理（仅处理一次）
+                                 if conn.client_voice_stop:
+                                     logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
+-                                    await self.handle_voice_stop(conn, audio_data)
++                                    await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                     break
+                             else:
+                                 # 自动模式下直接覆盖
+                                 self.text = text
+-                                await self.handle_voice_stop(conn, audio_data)
++                                await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                 break
+ 
+                 except asyncio.TimeoutError:
+@@ -276,6 +279,7 @@ class ASRProvider(ASRProviderBase):
+         finally:
+             # 清理连接的音频缓存
+             await self._cleanup()
++            self._stream_source_generation = None
+             conn.reset_audio_states()
+ 
+     async def _send_stop_request(self):
+diff --git a/server/core/providers/asr/aliyunbl_stream.py b/server/core/providers/asr/aliyunbl_stream.py
+index a7c2953..0d1784c 100644
+--- a/server/core/providers/asr/aliyunbl_stream.py
++++ b/server/core/providers/asr/aliyunbl_stream.py
+@@ -76,6 +76,8 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _start_recognition(self, conn: "ConnectionHandler"):
+         """开始识别会话"""
++        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
++        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+         try:
+             # 如果为手动模式,设置超时时长为最大值
+             if conn.client_listen_mode == "manual":
+@@ -156,6 +158,7 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _forward_results(self, conn: "ConnectionHandler"):
+         """转发识别结果"""
++        source_generation = getattr(self, "_stream_source_generation", None)
+         try:
+             while not conn.stop_event.is_set():
+                 # 获取当前连接的音频数据
+@@ -208,12 +211,12 @@ class ASRProvider(ASRProviderBase):
+                                 # 手动模式下,只有在收到stop信号后才触发处理
+                                 if conn.client_voice_stop:
+                                     logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
+-                                    await self.handle_voice_stop(conn, audio_data)
++                                    await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                     break
+                             else:
+                                 # 自动模式下直接覆盖
+                                 self.text = text
+-                                await self.handle_voice_stop(conn, audio_data)
++                                await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                 break
+ 
+                     # 处理task-finished事件
+@@ -243,6 +246,7 @@ class ASRProvider(ASRProviderBase):
+         finally:
+             # 清理连接的音频缓存
+             await self._cleanup()
++            self._stream_source_generation = None
+             conn.reset_audio_states()
+ 
+     async def _send_stop_request(self):
 diff --git a/server/core/providers/asr/base.py b/server/core/providers/asr/base.py
-index 64d6cfd..d0c371c 100644
+index 64d6cfd..070ef49 100644
 --- a/server/core/providers/asr/base.py
 +++ b/server/core/providers/asr/base.py
 @@ -17,7 +17,8 @@ from core.providers.asr.dto.dto import InterfaceType
@@ -1225,7 +1330,18 @@ index 64d6cfd..d0c371c 100644
  from typing import Optional, Tuple, List, NamedTuple, TYPE_CHECKING
  
  
-@@ -39,23 +40,39 @@ class ASRProviderBase(ABC):
+@@ -27,6 +28,10 @@ if TYPE_CHECKING:
+ TAG = __name__
+ logger = setup_logging()
+ 
++# 区分“调用方没有传 source_generation”和“明确传了 None”。
++# 后者必须 fail-closed，绝不能回退借用连接上当前 generation。
++SOURCE_GENERATION_UNSET = object()
++
+ 
+ class ASRProviderBase(ABC):
+     def __init__(self):
+@@ -39,23 +44,39 @@ class ASRProviderBase(ABC):
          )
          conn.asr_priority_thread.start()
  
@@ -1277,7 +1393,7 @@ index 64d6cfd..d0c371c 100644
  
      # 接收音频
      async def receive_audio(self, conn: "ConnectionHandler", pcm_frame, audio_have_voice):
-@@ -77,12 +94,34 @@ class ASRProviderBase(ABC):
+@@ -77,12 +98,38 @@ class ASRProviderBase(ABC):
                  pcm_bytes = b"".join(conn.asr_audio)
                  # 检查是否有足够的音频数据（每帧1920字节，15帧约28800字节）
                  if len(pcm_bytes) > 1920 * 15:
@@ -1296,26 +1412,30 @@ index 64d6cfd..d0c371c 100644
 +        self,
 +        conn: "ConnectionHandler",
 +        asr_audio_task: List[bytes],
-+        source_generation: Optional[int] = None,
++        source_generation=SOURCE_GENERATION_UNSET,
 +    ):
 +        """并行处理ASR和声纹识别；旧 generation 的结果直接丢弃。
 +
-+        source_generation 显式传递被识别音频的源 generation（listen stop 收尾
-+        会在 reset 前保存它）。未显式传递时回退到连接上的当前 generation；
-+        None 不是有效授权，is_current(None) 会 fail-closed。
++        source_generation 是“这段音频所属的轮次”，必须在 reset/abort 之前
++        捕获并显式传入。未传参数时才回退连接当前 generation（兼容旧调用）；
++        明确传入 None 表示旧回调没有可信来源，必须立即拒绝，绝不回退借用
++        当前 generation。
 +        """
-+        generation = (
-+            source_generation
-+            if source_generation is not None
-+            else getattr(conn, "current_audio_generation", None)
-+        )
++        if source_generation is None:
++            # 显式 None：旧轮次回调/无来源音频，不得启动任何后续处理。
++            conn.audio_gate.note_stale()
++            return
++        if source_generation is SOURCE_GENERATION_UNSET:
++            generation = getattr(conn, "current_audio_generation", None)
++        else:
++            generation = source_generation
 +        if not conn.audio_gate.is_current(generation):
 +            conn.audio_gate.note_stale()
 +            return
          try:
              total_start_time = time.monotonic()
  
-@@ -125,8 +164,10 @@ class ASRProviderBase(ABC):
+@@ -125,8 +172,10 @@ class ASRProviderBase(ABC):
              else:
                  speaker_name = voiceprint_result
  
@@ -1328,7 +1448,7 @@ index 64d6cfd..d0c371c 100644
              if wav_data and conn.voiceprint_provider:
                  try:
                      et = raw_text if isinstance(raw_text, str) else (
-@@ -181,11 +222,16 @@ class ASRProviderBase(ABC):
+@@ -181,11 +230,16 @@ class ASRProviderBase(ABC):
              text_len, _ = remove_punctuation_and_length(content_for_length_check)
              self.stop_ws_connection()
  
@@ -1343,6 +1463,140 @@ index 64d6cfd..d0c371c 100644
                  # 使用自定义模块进行上报
 -                await startToChat(conn, enhanced_text)
 +                await startToChat(conn, enhanced_text, source_generation=generation)
+         except Exception as e:
+             logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
+             import traceback
+diff --git a/server/core/providers/asr/doubao_stream.py b/server/core/providers/asr/doubao_stream.py
+index 130729b..7e80c5f 100644
+--- a/server/core/providers/asr/doubao_stream.py
++++ b/server/core/providers/asr/doubao_stream.py
+@@ -74,6 +74,9 @@ class ASRProvider(ASRProviderBase):
+         if audio_have_voice and self.asr_ws is None and not self.is_processing:
+             try:
+                 self.is_processing = True
++                # 本轮 ASR 会话绑定音频源 generation；结果回调只能用这个值，
++                # 不能回退借用连接上可能已被新一轮 rotate 的当前 generation。
++                self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+                 # 建立新的WebSocket连接
+                 headers = self.token_auth() if self.auth_method == "token" else None
+                 logger.bind(tag=TAG).info(f"正在连接ASR服务，headers: {headers}")
+@@ -157,6 +160,7 @@ class ASRProvider(ASRProviderBase):
+                 logger.bind(tag=TAG).info(f"发送音频数据时发生错误: {e}")
+ 
+     async def _forward_asr_results(self, conn: "ConnectionHandler"):
++        source_generation = getattr(self, "_stream_source_generation", None)
+         try:
+             while self.asr_ws and not conn.stop_event.is_set():
+                 # 获取当前连接的音频数据
+@@ -187,7 +191,7 @@ class ASRProvider(ASRProviderBase):
+                                 logger.bind(tag=TAG).error(f"识别文本：空")
+                                 self.text = ""
+                                 if len(audio_data) > 15:  # 确保有足够音频数据
+-                                    await self.handle_voice_stop(conn, audio_data)
++                                    await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                 break
+ 
+                             # 专门处理没有文本的识别结果（手动模式下可能已经识别完成但是没松按键）
+@@ -198,7 +202,7 @@ class ASRProvider(ASRProviderBase):
+ 
+                                 if conn.client_listen_mode == "manual" and conn.client_voice_stop and len(audio_data) > 15:
+                                     logger.bind(tag=TAG).debug("消息结束收到停止信号，触发处理")
+-                                    await self.handle_voice_stop(conn, audio_data)
++                                    await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                     break
+ 
+                             for utterance in utterances:
+@@ -218,14 +222,15 @@ class ASRProvider(ASRProviderBase):
+                                         # 在接收消息中途时收到停止信号
+                                         if conn.client_voice_stop and len(audio_data) > 0:
+                                             logger.bind(tag=TAG).debug("消息中途收到停止信号，触发处理")
+-                                            await self.handle_voice_stop(conn, audio_data)
++                                            await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
+                                         break
+                                     else:
+                                         # 自动模式下直接覆盖
+                                         self.text = current_text
+                                         if len(audio_data) > 15:  # 确保有足够音频数据
+                                             await self.handle_voice_stop(
+-                                                conn, audio_data
++                                                conn, audio_data,
++                                                source_generation=source_generation,
+                                             )
+                                     break
+                         elif "error" in payload:
+@@ -254,6 +259,7 @@ class ASRProvider(ASRProviderBase):
+                 self.asr_ws = None
+             self.is_processing = False
+             self._is_stopping = False
++            self._stream_source_generation = None
+             # 重置所有音频相关状态
+             conn.reset_audio_states()
+ 
+diff --git a/server/core/providers/asr/xunfei_stream.py b/server/core/providers/asr/xunfei_stream.py
+index fa59ca3..aee8970 100644
+--- a/server/core/providers/asr/xunfei_stream.py
++++ b/server/core/providers/asr/xunfei_stream.py
+@@ -14,7 +14,7 @@ if TYPE_CHECKING:
+     from core.connection import ConnectionHandler
+ from config.logger import setup_logging
+ from wsgiref.handlers import format_date_time
+-from core.providers.asr.base import ASRProviderBase
++from core.providers.asr.base import ASRProviderBase, SOURCE_GENERATION_UNSET
+ from core.providers.asr.dto.dto import InterfaceType
+ 
+ TAG = __name__
+@@ -121,6 +121,8 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _start_recognition(self, conn: "ConnectionHandler"):
+         """开始识别会话"""
++        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
++        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+         try:
+             self.is_processing = True
+             # 建立WebSocket连接
+@@ -187,6 +189,7 @@ class ASRProvider(ASRProviderBase):
+ 
+     async def _forward_results(self, conn: "ConnectionHandler"):
+         """转发识别结果"""
++        source_generation = getattr(self, "_stream_source_generation", None)
+         try:
+             while not conn.stop_event.is_set():
+                 try:
+@@ -223,7 +226,9 @@ class ASRProvider(ASRProviderBase):
+ 
+                     if status == 2:
+                         logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
+-                        await self.handle_voice_stop(conn, conn.asr_audio)
++                        await self.handle_voice_stop(
++                            conn, conn.asr_audio, source_generation=source_generation
++                        )
+                         break
+ 
+                 except asyncio.TimeoutError:
+@@ -247,10 +252,14 @@ class ASRProvider(ASRProviderBase):
+         finally:
+             # 清理连接资源
+             await self._cleanup()
++            self._stream_source_generation = None
+             conn.reset_audio_states()
+ 
+     async def handle_voice_stop(
+-        self, conn: "ConnectionHandler", asr_audio_task: List[bytes]
++        self,
++        conn: "ConnectionHandler",
++        asr_audio_task: List[bytes],
++        source_generation=SOURCE_GENERATION_UNSET,
+     ):
+         """处理语音停止，发送最后一帧并处理识别结果"""
+         try:
+@@ -264,7 +273,9 @@ class ASRProvider(ASRProviderBase):
+                 except Exception as e:
+                     logger.bind(tag=TAG).error(f"发送停止请求失败: {e}")
+ 
+-            await super().handle_voice_stop(conn, asr_audio_task)
++            await super().handle_voice_stop(
++                conn, asr_audio_task, source_generation=source_generation
++            )
          except Exception as e:
              logger.bind(tag=TAG).error(f"处理语音停止失败: {e}")
              import traceback
@@ -1514,10 +1768,10 @@ index 0000000..bc6e9aa
 +    return None, bytes(item), "legacy"
 diff --git a/server/tests/test_bb8_voice_safety_r1.py b/server/tests/test_bb8_voice_safety_r1.py
 new file mode 100644
-index 0000000..6c0b51a
+index 0000000..bb925a3
 --- /dev/null
 +++ b/server/tests/test_bb8_voice_safety_r1.py
-@@ -0,0 +1,493 @@
+@@ -0,0 +1,549 @@
 +"""BB-8 R1 voice safety regression tests (no hardware, no production service).
 +
 +Run from the controlled work copy:
@@ -1537,7 +1791,7 @@ index 0000000..6c0b51a
 +import types
 +import unittest
 +from pathlib import Path
-+from unittest.mock import AsyncMock, patch
++from unittest.mock import AsyncMock, MagicMock, patch
 +
 +ROOT = Path(__file__).resolve().parents[1]
 +sys.path.insert(0, str(ROOT))
@@ -1903,6 +2157,62 @@ index 0000000..6c0b51a
 +        ) as brain:
 +            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=None)
 +            stt.assert_not_awaited()
++            brain.assert_not_awaited()
++
++    async def test_explicit_none_rejected_even_when_connection_generation_valid(self):
++        """旧回调明确传 None：即使连接侧 generation 有效也不得借用。"""
++        conn, generation = await self._gated_conn()
++        self.assertTrue(conn.audio_gate.is_current(generation))
++
++        identify = AsyncMock(return_value="owner")
++        enroll = AsyncMock(return_value=True)
++        conn.voiceprint_provider = types.SimpleNamespace(
++            identify_speaker=identify, enroll_speaker=enroll, speaker_ids=["owner"]
++        )
++
++        with patch.object(conn.asr, "speech_to_text_wrapper", new=AsyncMock()) as stt, patch.object(
++            conn.asr, "stop_ws_connection", new=MagicMock()
++        ) as stop_ws, patch.object(
++            asr_base, "enqueue_asr_report", new=MagicMock()
++        ) as report, patch.object(asr_base, "startToChat", new=AsyncMock()) as brain:
++            await conn.asr.handle_voice_stop(conn, [b"frame"], source_generation=None)
++            stt.assert_not_awaited()
++            stop_ws.assert_not_called()
++            report.assert_not_called()
++            identify.assert_not_awaited()
++            enroll.assert_not_awaited()
++            brain.assert_not_awaited()
++
++    async def test_stale_stream_captured_generation_rejected_after_new_round(self):
++        """STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。"""
++        conn, old_generation = await self._gated_conn()
++        # 模拟新一轮 reset/abort：generation 必须递增。
++        conn.audio_gate.rotate("new_round")
++        _, new_item = conn.enqueue_microphone_audio(b"new-round-frame")
++        new_generation, _, _ = unpack_gated_frame(new_item)
++        conn.current_audio_generation = new_generation
++        self.assertTrue(conn.audio_gate.is_current(new_generation))
++        self.assertNotEqual(old_generation, new_generation)
++
++        identify = AsyncMock(return_value="owner")
++        enroll = AsyncMock(return_value=True)
++        conn.voiceprint_provider = types.SimpleNamespace(
++            identify_speaker=identify, enroll_speaker=enroll, speaker_ids=["owner"]
++        )
++
++        with patch.object(conn.asr, "speech_to_text_wrapper", new=AsyncMock()) as stt, patch.object(
++            conn.asr, "stop_ws_connection", new=MagicMock()
++        ) as stop_ws, patch.object(
++            asr_base, "enqueue_asr_report", new=MagicMock()
++        ) as report, patch.object(asr_base, "startToChat", new=AsyncMock()) as brain:
++            await conn.asr.handle_voice_stop(
++                conn, [b"frame"], source_generation=old_generation
++            )
++            stt.assert_not_awaited()
++            stop_ws.assert_not_called()
++            report.assert_not_called()
++            identify.assert_not_awaited()
++            enroll.assert_not_awaited()
 +            brain.assert_not_awaited()
 +
 +

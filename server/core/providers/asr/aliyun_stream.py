@@ -149,6 +149,8 @@ class ASRProvider(ASRProviderBase):
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
+        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
+        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
         if self._is_token_expired():
             self._refresh_token()
         
@@ -195,6 +197,7 @@ class ASRProvider(ASRProviderBase):
 
     async def _forward_results(self, conn: "ConnectionHandler"):
         """转发识别结果"""
+        source_generation = getattr(self, "_stream_source_generation", None)
         try:
             while not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
@@ -252,12 +255,12 @@ class ASRProvider(ASRProviderBase):
                                 # 手动模式下，只有在收到stop信号后才触发处理（仅处理一次）
                                 if conn.client_voice_stop:
                                     logger.bind(tag=TAG).debug("收到最终识别结果，触发处理")
-                                    await self.handle_voice_stop(conn, audio_data)
+                                    await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
                                     break
                             else:
                                 # 自动模式下直接覆盖
                                 self.text = text
-                                await self.handle_voice_stop(conn, audio_data)
+                                await self.handle_voice_stop(conn, audio_data, source_generation=source_generation)
                                 break
 
                 except asyncio.TimeoutError:
@@ -276,6 +279,7 @@ class ASRProvider(ASRProviderBase):
         finally:
             # 清理连接的音频缓存
             await self._cleanup()
+            self._stream_source_generation = None
             conn.reset_audio_states()
 
     async def _send_stop_request(self):

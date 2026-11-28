@@ -6,7 +6,7 @@
 
 | 门禁项 | 状态 | 说明 |
 | --- | --- | --- |
-| R1 自动化新增测试 | PASS | 20/20，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
+| R1 自动化新增测试 | PASS | 22/22，见 `R1_VOICE_SAFETY_TEST_OUTPUT.txt` |
 | 既有安全回归测试 | FAIL + 挂起（基线固有） | 见 `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` 与 `R1_TEST_EVIDENCE.md` |
 | 密钥明确 | **BLOCKED** | 三路密钥无生产注入配置，见 `R1_KEY_INJECTION_AUDIT.md` |
 | 实例确认 | **BLOCKED** | 两个 bridge 实例（8900/8910）目标端口与启动来源未最终确认 |

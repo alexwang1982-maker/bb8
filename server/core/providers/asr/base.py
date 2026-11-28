@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 TAG = __name__
 logger = setup_logging()
 
+# 区分“调用方没有传 source_generation”和“明确传了 None”。
+# 后者必须 fail-closed，绝不能回退借用连接上当前 generation。
+SOURCE_GENERATION_UNSET = object()
+
 
 class ASRProviderBase(ABC):
     def __init__(self):
@@ -106,19 +110,23 @@ class ASRProviderBase(ABC):
         self,
         conn: "ConnectionHandler",
         asr_audio_task: List[bytes],
-        source_generation: Optional[int] = None,
+        source_generation=SOURCE_GENERATION_UNSET,
     ):
         """并行处理ASR和声纹识别；旧 generation 的结果直接丢弃。
 
-        source_generation 显式传递被识别音频的源 generation（listen stop 收尾
-        会在 reset 前保存它）。未显式传递时回退到连接上的当前 generation；
-        None 不是有效授权，is_current(None) 会 fail-closed。
+        source_generation 是“这段音频所属的轮次”，必须在 reset/abort 之前
+        捕获并显式传入。未传参数时才回退连接当前 generation（兼容旧调用）；
+        明确传入 None 表示旧回调没有可信来源，必须立即拒绝，绝不回退借用
+        当前 generation。
         """
-        generation = (
-            source_generation
-            if source_generation is not None
-            else getattr(conn, "current_audio_generation", None)
-        )
+        if source_generation is None:
+            # 显式 None：旧轮次回调/无来源音频，不得启动任何后续处理。
+            conn.audio_gate.note_stale()
+            return
+        if source_generation is SOURCE_GENERATION_UNSET:
+            generation = getattr(conn, "current_audio_generation", None)
+        else:
+            generation = source_generation
         if not conn.audio_gate.is_current(generation):
             conn.audio_gate.note_stale()
             return

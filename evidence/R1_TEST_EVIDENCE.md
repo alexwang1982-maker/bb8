@@ -1,6 +1,6 @@
 # BB-8 R1 测试与验收证据（复审修正后）
 
-## 1. R1 安全测试：20/20 PASS
+## 1. R1 安全测试：22/22 PASS
 
 命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 
@@ -11,7 +11,7 @@ G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe -B -m unittest tests.test_b
 原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 
 ```
-Ran 20 tests in 0.708s
+Ran 22 tests in 0.626s
 OK
 ```
 
@@ -34,6 +34,8 @@ OK
 | | `test_new_round_during_asr_drops_brain_dispatch` | 识别等待期间新一轮 reset → 旧结果不进 Brain |
 | | `test_old_voiceprint_enrollment_dropped_after_new_round` | 新轮次后旧声纹自动注册不执行 |
 | | `test_none_generation_is_not_authorization` | `None` 不是有效授权，`is_current(None)=False` 且 STT 不启动 |
+| **最终复审新增：显式 None / STREAM** | `test_explicit_none_rejected_even_when_connection_generation_valid` | 连接 generation 有效但旧回调显式传 `None`：STT、声纹识别、自动注册、Brain 全部拒绝 |
+| | `test_stale_stream_captured_generation_rejected_after_new_round` | STREAM 会话捕获的旧 generation 在新轮次后失效，即使连接当前 generation 有效也不得派发 |
 | **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 | | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 | **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -57,7 +59,7 @@ test_closed_connection_removes_connection_without_mcp_call ... ok
 test_concurrent_trigger_is_rejected_as_busy ...     <-- 此处挂起
 ```
 
-60 秒后按进程树终止，**未产出 `Ran/OK/FAILED` 汇总**。同一失败与挂起此前已在未修改基线 worktree（8197bbb）复现，属既有问题，本轮**未尝试修复**（超出 R1 语音安全范围）。因此不能宣称「既有 33 用例全部通过」。
+60 秒后按进程树终止，**未产出 `Ran/OK/FAILED` 汇总**。同一失败与挂起此前已在未修改基线 worktree（8197bbb）复现，属既有问题，本轮**未尝试修复**（超出 R1 语音安全范围）。原始记录保留不变；本轮未重跑该套件，因此不能宣称「既有 33 用例全部通过」。
 
 ## 3. 视觉范围
 
@@ -71,4 +73,4 @@ R1 复审修正已移除 `bridge/bridge.py` 的视觉回灌/3 秒去重改动及
 
 ## 5. 结论
 
-三项复审并发问题均有针对性回归测试且通过；既有安全套件的失败/挂起如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
+三项复审并发问题及最终复审的显式 `None`/STREAM 旧回调问题均有针对性回归测试且通过（22/22）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
