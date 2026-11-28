@@ -47,7 +47,7 @@ if "opuslib_next" not in sys.modules:
 import websockets
 
 from core.connection import ConnectionHandler
-from core.providers.asr.base import ASRProviderBase
+from core.providers.asr.base import ASRProviderBase, SOURCE_GENERATION_UNSET
 from core.providers.asr.aliyun_stream import ASRProvider as AliyunStreamProvider
 from core.providers.asr.aliyunbl_stream import ASRProvider as AliyunBlStreamProvider
 from core.providers.asr.doubao_stream import ASRProvider as DoubaoStreamProvider
@@ -724,6 +724,213 @@ class TestStreamGenerationTaskIsolation(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 base_hv.await_args.kwargs["source_generation"], probe_generation
             )
+
+
+class _BlockingCloseWs:
+    """可暂停在 close() 的 STREAM WebSocket，用于真实异步交错回归。"""
+
+    def __init__(self, messages, close_gate=None, recv_gate=None, recv_gate_after=0):
+        self._messages = list(messages)
+        self.close_gate = close_gate
+        self.recv_gate = recv_gate
+        self.recv_gate_after = recv_gate_after
+        self.close_started = asyncio.Event()
+        self.closed = False
+
+    async def recv(self):
+        if self.recv_gate is not None and len(self._messages) <= self.recv_gate_after:
+            await self.recv_gate.wait()
+        if self._messages:
+            return self._messages.pop(0)
+        raise websockets.ConnectionClosed(None, None)
+
+    async def send(self, data):
+        return None
+
+    async def close(self):
+        self.closed = True
+        self.close_started.set()
+        if self.close_gate is not None:
+            await self.close_gate.wait()
+
+
+class TestStreamSessionResourceIsolation(unittest.IsolatedAsyncioTestCase):
+    """同一 Provider 实例：旧会话 cleanup 不得关闭/清空新会话资源。"""
+
+    @staticmethod
+    def _release_for_new_session(provider):
+        """模拟旧的同步停止路径：释放 processing，并使 asr_ws 变为空。"""
+        provider.stop_ws_connection()
+        if provider.asr_ws is not None:
+            provider.asr_ws = None
+        provider.is_processing = False
+
+    async def _run_case(
+        self, provider_cls, config, message, forward_name, parse_response=False
+    ):
+        conn = make_conn()
+        provider = provider_cls(config, False)
+        conn.asr = provider
+
+        # 旧轮次：捕获 generation，并把旧任务绑定到它自己的 WebSocket。
+        conn.audio_gate.rotate("old_round")
+        _, old_item = conn.enqueue_microphone_audio(b"old-frame" * 16)
+        old_generation, _, _ = unpack_gated_frame(old_item)
+        conn.current_audio_generation = old_generation
+        conn.asr_audio = [b"old-frame"] * 16
+
+        old_close_gate = asyncio.Event()
+        # 旧任务只需一条最终结果；再 recv 时抛 ConnectionClosed 进入 cleanup。
+        old_ws = _BlockingCloseWs([message], close_gate=old_close_gate)
+        provider.asr_ws = old_ws
+        provider.is_processing = True
+        provider.server_ready = False
+        provider.forward_task = None
+        old_task_id = "old-task"
+        if hasattr(provider, "task_id"):
+            provider.task_id = old_task_id
+        if parse_response:
+            provider.parse_response = MagicMock(return_value=message)
+
+        calls = []
+
+        async def handle_voice_stop(c, audio, source_generation=SOURCE_GENERATION_UNSET):
+            calls.append(source_generation)
+            if source_generation == old_generation:
+                # 旧回调不得派发 Brain；同步停止让新会话可以启动。
+                self._release_for_new_session(provider)
+                return
+            return await ASRProviderBase.handle_voice_stop(
+                provider, c, audio, source_generation=source_generation
+            )
+
+        provider.handle_voice_stop = handle_voice_stop
+        provider.speech_to_text_wrapper = AsyncMock(return_value=("新轮文本", None))
+
+        new_recv_gate = asyncio.Event()
+        # doubao 第一条用于初始化响应；所有 Provider 的结果 recv 都在此后暂停。
+        new_ws = _BlockingCloseWs(
+            [message, message] if parse_response else [message],
+            recv_gate=new_recv_gate,
+            recv_gate_after=1,
+        )
+        forward = getattr(provider, forward_name)
+        forward_args = [conn, old_generation, old_ws]
+        if forward_name == "_forward_results" and isinstance(
+            provider, AliyunBlStreamProvider
+        ):
+            forward_args.append(old_task_id)
+
+        with patch.object(
+            websockets, "connect", new=AsyncMock(return_value=new_ws)
+        ), patch.object(
+            asr_base, "enqueue_asr_report", new=MagicMock()
+        ), patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            old_task = asyncio.create_task(forward(*forward_args))
+            # 旧任务已进入 finally，并暂停在 WebSocket close()。
+            await asyncio.wait_for(old_ws.close_started.wait(), 2)
+            self.assertIsNone(provider.asr_ws)
+            self.assertFalse(provider.is_processing)
+
+            # 新轮次在同一 Provider 实例上启动。
+            conn.audio_gate.rotate("new_round")
+            _, new_item = conn.enqueue_microphone_audio(b"new-frame" * 16)
+            new_generation, _, _ = unpack_gated_frame(new_item)
+            conn.current_audio_generation = new_generation
+            conn.asr_audio = [b"new-frame"] * 16
+            conn.client_voice_stop = False
+
+            await provider.receive_audio(conn, b"new-frame", True)
+            self.assertIs(provider.asr_ws, new_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIsNotNone(provider.forward_task)
+            new_task = provider.forward_task
+            self.assertFalse(new_task.done())
+
+            # 释放旧 close：旧 cleanup 完成后不得触碰新会话资源。
+            old_close_gate.set()
+            await asyncio.wait_for(old_task, 2)
+            self.assertTrue(old_ws.closed)
+            self.assertIs(provider.asr_ws, new_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIs(provider.forward_task, new_task)
+            self.assertFalse(new_ws.closed)
+            self.assertEqual(calls, [old_generation])
+            brain.assert_not_awaited()
+
+            # 新任务仍能正常完成并派发 Brain。
+            new_recv_gate.set()
+            await asyncio.wait_for(new_task, 2)
+            self.assertEqual(calls, [old_generation, new_generation])
+            brain.assert_awaited_once()
+            self.assertEqual(brain.await_args.kwargs["source_generation"], new_generation)
+
+    async def test_doubao_old_cleanup_does_not_destroy_new_session(self):
+        message = {
+            "payload_msg": {
+                "result": {
+                    "text": "你好",
+                    "utterances": [{"definite": True, "text": "你好"}],
+                },
+                "audio_info": {"duration": 100},
+            }
+        }
+        await self._run_case(
+            DoubaoStreamProvider,
+            {"appid": "test", "access_token": "test", "enable_multilingual": False},
+            message,
+            "_forward_asr_results",
+            parse_response=True,
+        )
+
+    async def test_aliyun_old_cleanup_does_not_destroy_new_session(self):
+        message = json.dumps(
+            {
+                "header": {"name": "SentenceEnd", "status": 20000000},
+                "payload": {"result": "你好"},
+            }
+        )
+        await self._run_case(
+            AliyunStreamProvider, {"token": "test-token"}, message, "_forward_results"
+        )
+
+    async def test_aliyunbl_old_cleanup_does_not_destroy_new_session(self):
+        message = json.dumps(
+            {
+                "header": {"event": "result-generated"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "你好",
+                            "sentence_end": True,
+                            "end_time": 123,
+                        }
+                    }
+                },
+            }
+        )
+        await self._run_case(AliyunBlStreamProvider, {}, message, "_forward_results")
+
+    async def test_xunfei_old_cleanup_does_not_destroy_new_session(self):
+        encoded = base64.b64encode(
+            json.dumps(
+                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False
+            ).encode("utf-8")
+        ).decode("ascii")
+        message = json.dumps(
+            {
+                "header": {"code": 0, "status": 2},
+                "payload": {"result": {"text": encoded}},
+            }
+        )
+        await self._run_case(
+            XunfeiStreamProvider,
+            {"app_id": "test", "api_key": "test", "api_secret": "test"},
+            message,
+            "_forward_results",
+        )
 
 
 if __name__ == "__main__":

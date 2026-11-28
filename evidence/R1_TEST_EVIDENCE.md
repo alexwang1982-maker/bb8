@@ -1,6 +1,6 @@
 # BB-8 R1 测试与验收证据（复审修正后）
 
-## 1. R1 安全测试：26/26 PASS
+## 1. R1 安全测试：30/30 PASS
 
 命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 
@@ -11,7 +11,7 @@ G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe -B -m unittest tests.test_b
 原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 
 ```
-Ran 26 tests in 1.061s
+Ran 30 tests in 1.775s
 OK
 ```
 
@@ -40,6 +40,10 @@ OK
 | | `test_aliyun_stream_task_keeps_own_generation` | aliyun 同上；旧任务 cleanup 不无效化新 generation |
 | | `test_aliyunbl_stream_task_keeps_own_generation` | aliyunbl 同上 |
 | | `test_xunfei_stream_task_keeps_own_generation` | xunfei 同上，并断言覆写透传 generation 给基类 |
+| **最终复审：STREAM 会话资源隔离** | `test_doubao_old_cleanup_does_not_destroy_new_session` | 同一 Provider 实例：旧 cleanup 暂停在 close 时新会话启动；释放后新 WS/forward_task/processing 未破坏，新任务完成并派发 Brain |
+| | `test_aliyun_old_cleanup_does_not_destroy_new_session` | aliyun 同上 |
+| | `test_aliyunbl_old_cleanup_does_not_destroy_new_session` | aliyunbl 同上；finish-task 只作用于旧会话 WS/task_id |
+| | `test_xunfei_old_cleanup_does_not_destroy_new_session` | xunfei 同上；最后一帧只发给旧会话 WS |
 | **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 | | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 | **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -77,4 +81,4 @@ R1 复审修正已移除 `bridge/bridge.py` 的视觉回灌/3 秒去重改动及
 
 ## 5. 结论
 
-三轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态）均有针对性回归测试且通过（26/26）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
+四轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态；STREAM 旧 cleanup 破坏新会话资源）均有针对性回归测试且通过（30/30）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。

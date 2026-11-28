@@ -30,12 +30,19 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 - `rotate()` / `suppress()` / `open()` 均在同一个 `with self._lock` 内完成：**读取状态 → generation 递增 → 双队列清理 → normal_open 保留/写入**。
 - `seal()` 也在同锁内完成队列清理与 generation 读取。
 
-### 2.4 STREAM 结果任务 generation 参数化（最终复审）
+### 2.4 STREAM 结果任务 generation 参数化（复审）
 
 - 四种 STREAM Provider 全部取消 `_stream_source_generation` 实例共享属性：旧任务的 `finally` 不再把新会话的 generation 置空。
 - 会话建立时把捕获的 generation 作为协程参数交给结果任务；旧任务即使在新轮次之后才执行，仍持有创建时的旧 generation。
 - 四种 Provider 的 `finally` 清理只在 `conn.audio_gate.is_current(source_generation)` 为真时调用 `conn.reset_audio_states()`；旧会话 cleanup 不会 rotate/清空新会话已取得的 generation。
 - 新增 4 项并发回归（每种 Provider 一项）：旧任务先创建不执行 → 新轮次启动并取得新 generation → 旧任务执行时用旧 generation 且 Brain 不被调用 → 新任务用新 generation 正常派发 Brain；讯飞覆写透传也单独断言。
+
+### 2.5 STREAM 会话资源隔离（最终复审）
+
+- 四种 STREAM Provider 的 WebSocket、task_id 与连接状态在会话建立时捕获为会话局部对象；结果任务只调用该 WebSocket 收/发，停止请求也只作用于调用时所属的会话对象。
+- `_cleanup(session_ws, session_task_id)` 只关闭传入的旧 WebSocket；`await close()` 期间若新会话已占用 Provider，则再次确认归属，只有仍持有同一 WS（或尚未有新会话）时才清空 `asr_ws` / `is_processing` / `server_ready` / `forward_task` / `task_id`。旧 cleanup 不再关闭或清空新会话资源。
+- `stop_ws_connection()` 同样先捕获旧 WS 再置空共享引用；启动失败路径也关闭会话局部 WS，避免异常清理误伤新会话。
+- 新增 4 项同一 Provider 实例异步交错回归：旧任务进入 `cleanup` 并暂停在 WebSocket close → 新轮次 rotate → 在同一实例启动新会话 → 释放旧 close → 断言新 WS 未被关闭、`asr_ws` / `forward_task` / `is_processing` 均未被旧任务破坏，且新任务随后正常完成并派发 Brain。
 
 ## 3. 视觉范围移除
 
@@ -50,9 +57,9 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 
 ## 4. 测试证据
 
-### 4.1 R1 新增测试：26/26 PASS
+### 4.1 R1 新增测试：30/30 PASS
 
-`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 26 tests in 1.061s` / `OK`。较上一版（22 项）新增 4 项 STREAM 并发回归：
+`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 30 tests in 1.775s` / `OK`。较上一版（26 项）新增 4 项 STREAM 会话资源交错回归：
 
 | 用例 | 断言 |
 | --- | --- |
@@ -66,12 +73,16 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 | **`test_aliyun_stream_task_keeps_own_generation`** | aliyun：同上；旧任务 cleanup 不无效化新 generation |
 | **`test_aliyunbl_stream_task_keeps_own_generation`** | aliyunbl：同上 |
 | **`test_xunfei_stream_task_keeps_own_generation`** | xunfei：同上，并断言覆写把 generation 原样透传基类 |
+| **`test_doubao_old_cleanup_does_not_destroy_new_session`** | doubao：旧 cleanup 暂停 close 时新会话启动；释放后新 WS/forward_task/processing 未破坏，新任务完成 |
+| **`test_aliyun_old_cleanup_does_not_destroy_new_session`** | aliyun：同上 |
+| **`test_aliyunbl_old_cleanup_does_not_destroy_new_session`** | aliyunbl：同上，finish-task 也只作用于旧会话 WS/task_id |
+| **`test_xunfei_old_cleanup_does_not_destroy_new_session`** | xunfei：同上，最后一帧只发给旧会话 WS |
 | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清新 token 播放态，入口保持关闭 |
 | `test_abort_without_new_round_still_clears` | 正常 Abort 仍收口 |
 | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
 | `test_concurrent_gate_changes_keep_generation_consistent` | 6 线程 × 300 次并发变更 generation 一致 |
 
-（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 26 项。）
+（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、STREAM 会话资源隔离 4 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 30 项。）
 
 ### 4.2 既有安全回归：基线固有 FAIL + 挂起
 
@@ -86,11 +97,11 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 | 文件 | 内容 |
 | --- | --- |
 | `R1_FULL_DIFF.patch` | 从基线 `8197bbb` 到最终工作副本的完整 diff（不含补丁文件自身，避免自引用） |
-| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 26 项测试原始输出 |
+| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 30 项测试原始输出 |
 | `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` | 既有安全套件 FAIL/挂起原始记录 |
 | `R1_TEST_EVIDENCE.md` | 测试覆盖与验收边界 |
 | `WORKCOPY_AFTER_SHA256.csv` | 最终工作副本关键文件 size + SHA256 |
-| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含三轮复审并发修正） |
+| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含四轮复审并发修正） |
 | `R1_BASELINE_AND_INSTANCES.md` | 基线与运行态盘点（只读） |
 | `R1_VOICEPRINT_AUTHORIZATION_AUDIT.md` | 声纹/授权链审计 |
 | `R1_KEY_INJECTION_AUDIT.md` | 密钥注入只读审计 |

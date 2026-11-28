@@ -77,11 +77,12 @@ class ASRProvider(ASRProviderBase):
                 # 本轮 ASR 会话绑定音频源 generation；作为独立参数传给结果任务，
                 # 任务全程只用自己的参数，不读连接当前值或 Provider 共享属性。
                 source_generation = getattr(conn, "current_audio_generation", None)
-                # 建立新的WebSocket连接
+                # 建立新的WebSocket连接；会话 WS 是本轮独有。
                 headers = self.token_auth() if self.auth_method == "token" else None
                 logger.bind(tag=TAG).info(f"正在连接ASR服务，headers: {headers}")
 
-                self.asr_ws = await websockets.connect(
+                session_ws = None
+                session_ws = await websockets.connect(
                     self.ws_url,
                     additional_headers=headers,
                     max_size=1000000000,
@@ -89,6 +90,7 @@ class ASRProvider(ASRProviderBase):
                     ping_timeout=None,
                     close_timeout=10,
                 )
+                self.asr_ws = session_ws
 
                 # 发送初始化请求
                 request_params = self.construct_request(str(uuid.uuid4()))
@@ -100,10 +102,10 @@ class ASRProvider(ASRProviderBase):
                     full_client_request.extend(payload_bytes)
 
                     logger.bind(tag=TAG).info(f"发送初始化请求: {request_params}")
-                    await self.asr_ws.send(full_client_request)
+                    await session_ws.send(full_client_request)
 
                     # 等待初始化响应
-                    init_res = await self.asr_ws.recv()
+                    init_res = await session_ws.recv()
                     result = self.parse_response(init_res)
                     logger.bind(tag=TAG).info(f"收到初始化响应: {result}")
 
@@ -121,7 +123,7 @@ class ASRProvider(ASRProviderBase):
 
                 # 启动接收ASR结果的异步任务
                 self.forward_task = asyncio.create_task(
-                    self._forward_asr_results(conn, source_generation)
+                    self._forward_asr_results(conn, source_generation, session_ws)
                 )
 
                 # 发送缓存的音频数据
@@ -134,7 +136,7 @@ class ASRProvider(ASRProviderBase):
                             )
                             audio_request.extend(len(payload).to_bytes(4, "big"))
                             audio_request.extend(payload)
-                            await self.asr_ws.send(audio_request)
+                            await session_ws.send(audio_request)
                         except Exception as e:
                             logger.bind(tag=TAG).info(
                                 f"发送缓存音频数据时发生错误: {e}"
@@ -144,10 +146,7 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
                 if hasattr(e, "__cause__") and e.__cause__:
                     logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
-                if self.asr_ws:
-                    await self.asr_ws.close()
-                    self.asr_ws = None
-                self.is_processing = False
+                await self._cleanup(session_ws)
                 return
 
         # 发送当前音频数据
@@ -161,14 +160,18 @@ class ASRProvider(ASRProviderBase):
             except Exception as e:
                 logger.bind(tag=TAG).info(f"发送音频数据时发生错误: {e}")
 
-    async def _forward_asr_results(self, conn: "ConnectionHandler", source_generation):
-        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
+    async def _forward_asr_results(
+        self, conn: "ConnectionHandler", source_generation, session_ws=None
+    ):
+        """结果任务只使用创建时传入的 generation / WebSocket。"""
+        if session_ws is None:
+            session_ws = self.asr_ws
         try:
-            while self.asr_ws and not conn.stop_event.is_set():
+            while session_ws and not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
                 audio_data = conn.asr_audio
                 try:
-                    response = await self.asr_ws.recv()
+                    response = await session_ws.recv()
                     result = self.parse_response(response)
                     logger.bind(tag=TAG).debug(f"收到ASR结果: {result}")
 
@@ -256,27 +259,45 @@ class ASRProvider(ASRProviderBase):
             if hasattr(e, "__cause__") and e.__cause__:
                 logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
         finally:
-            if self.asr_ws:
-                await self.asr_ws.close()
-                self.asr_ws = None
-            self.is_processing = False
-            self._is_stopping = False
+            # 只关闭本会话 WS；旧任务 cleanup 不得触碰新会话资源。
+            await self._cleanup(session_ws)
             # 仅当本会话仍是当前轮次时才做连接级收尾。旧会话 cleanup 不得
             # rotate/清空一个新会话已经拿到的 generation。
             if conn.audio_gate.is_current(source_generation):
                 conn.reset_audio_states()
 
+    async def _cleanup(self, session_ws=None):
+        """只关闭本会话的 WebSocket；不得触碰后来建立的新会话状态。"""
+        if session_ws is None:
+            session_ws = self.asr_ws
+
+        if session_ws is not None:
+            try:
+                await asyncio.wait_for(session_ws.close(), timeout=2.0)
+            except Exception as e:
+                logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
+
+        # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
+        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
+        if self.asr_ws is session_ws or self.asr_ws is None:
+            self.asr_ws = None
+            self.is_processing = False
+            self._is_stopping = False
+            self.forward_task = None
+
     def stop_ws_connection(self):
-        if self.asr_ws:
-            asyncio.create_task(self.asr_ws.close())
+        session_ws = self.asr_ws
+        if session_ws:
+            asyncio.create_task(session_ws.close())
             self.asr_ws = None
         self.is_processing = False
         self._is_stopping = False
 
     async def _send_stop_request(self):
-        """发送最后一个音频帧以通知服务器结束"""
+        """发送最后一个音频帧以通知服务器结束（只作用于调用时所属会话）"""
         self._is_stopping = True  # 先标记为停止状态，阻止后续音频发送
-        if self.asr_ws:
+        session_ws = self.asr_ws
+        if session_ws:
             try:
                 # 发送结束标记的音频帧（gzip压缩的空数据）
                 empty_payload = gzip.compress(b"")
@@ -285,7 +306,7 @@ class ASRProvider(ASRProviderBase):
                 )
                 last_audio_request.extend(len(empty_payload).to_bytes(4, "big"))
                 last_audio_request.extend(empty_payload)
-                await self.asr_ws.send(last_audio_request)
+                await session_ws.send(last_audio_request)
                 logger.bind(tag=TAG).debug("已发送结束音频帧")
             except Exception as e:
                 logger.bind(tag=TAG).debug(f"发送结束音频帧时出错: {e}")

@@ -137,7 +137,7 @@ class ASRProvider(ASRProviderBase):
                 await self._start_recognition(conn)
             except Exception as e:
                 logger.bind(tag=TAG).error(f"开始识别失败: {str(e)}")
-                await self._cleanup()
+                await self._cleanup(self.asr_ws)
                 return
 
         if self.asr_ws and self.is_processing and self.server_ready:
@@ -145,66 +145,77 @@ class ASRProvider(ASRProviderBase):
                 await self.asr_ws.send(pcm_frame)
             except Exception as e:
                 logger.bind(tag=TAG).warning(f"发送音频失败: {str(e)}")
-                await self._cleanup()
+                await self._cleanup(self.asr_ws)
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
         # 本轮 generation 作为独立参数传给结果任务；任务不读连接当前值或共享属性。
         source_generation = getattr(conn, "current_audio_generation", None)
-        if self._is_token_expired():
-            self._refresh_token()
-        
-        # 建立连接
-        headers = {"X-NLS-Token": self.token}
-        self.asr_ws = await websockets.connect(
-            self.ws_url,
-            additional_headers=headers,
-            max_size=1000000000,
-            ping_interval=None,
-            ping_timeout=None,
-            close_timeout=5,
-        )
+        session_ws = None
+        try:
+            if self._is_token_expired():
+                self._refresh_token()
 
-        self.task_id = uuid.uuid4().hex
+            # 建立连接；会话 WebSocket 是本轮独有，结果任务/清理只认这个对象。
+            headers = {"X-NLS-Token": self.token}
+            session_ws = await websockets.connect(
+                self.ws_url,
+                additional_headers=headers,
+                max_size=1000000000,
+                ping_interval=None,
+                ping_timeout=None,
+                close_timeout=5,
+            )
+            self.asr_ws = session_ws
 
-        logger.bind(tag=TAG).debug(f"WebSocket连接建立成功, task_id: {self.task_id}")
+            session_task_id = uuid.uuid4().hex
+            self.task_id = session_task_id
 
-        self.is_processing = True
-        self.server_ready = False  # 重置服务器准备状态
-        self.forward_task = asyncio.create_task(
-            self._forward_results(conn, source_generation)
-        )
+            logger.bind(tag=TAG).debug(f"WebSocket连接建立成功, task_id: {session_task_id}")
 
-        # 发送开始请求
-        start_request = {
-            "header": {
-                "namespace": "SpeechTranscriber",
-                "name": "StartTranscription",
-                "message_id": uuid.uuid4().hex,
-                "task_id": self.task_id,
-                "appkey": self.appkey
-            },
-            "payload": {
-                "format": "pcm",
-                "sample_rate": 16000,
-                "enable_intermediate_result": True,
-                "enable_punctuation_prediction": True,
-                "enable_inverse_text_normalization": True,
-                "max_sentence_silence": self.max_sentence_silence,
-                "enable_voice_detection": False,
+            self.is_processing = True
+            self.server_ready = False  # 重置服务器准备状态
+            self.forward_task = asyncio.create_task(
+                self._forward_results(conn, source_generation, session_ws)
+            )
+
+            # 发送开始请求
+            start_request = {
+                "header": {
+                    "namespace": "SpeechTranscriber",
+                    "name": "StartTranscription",
+                    "message_id": uuid.uuid4().hex,
+                    "task_id": session_task_id,
+                    "appkey": self.appkey
+                },
+                "payload": {
+                    "format": "pcm",
+                    "sample_rate": 16000,
+                    "enable_intermediate_result": True,
+                    "enable_punctuation_prediction": True,
+                    "enable_inverse_text_normalization": True,
+                    "max_sentence_silence": self.max_sentence_silence,
+                    "enable_voice_detection": False,
+                }
             }
-        }
-        await self.asr_ws.send(json.dumps(start_request, ensure_ascii=False))
-        logger.bind(tag=TAG).debug("已发送开始请求，等待服务器准备...")
+            await session_ws.send(json.dumps(start_request, ensure_ascii=False))
+            logger.bind(tag=TAG).debug("已发送开始请求，等待服务器准备...")
+        except Exception:
+            await self._cleanup(session_ws)
+            raise
 
-    async def _forward_results(self, conn: "ConnectionHandler", source_generation):
-        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
+    async def _forward_results(
+        self, conn: "ConnectionHandler", source_generation, session_ws=None
+    ):
+        """结果任务只使用创建时传入的 generation / WebSocket。"""
+        if session_ws is None:
+            session_ws = self.asr_ws
         try:
             while not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
                 audio_data = conn.asr_audio
                 try:
-                    response = await self.asr_ws.recv()
+                    response = await session_ws.recv()
                     result = json.loads(response)
 
                     header = result.get("header", {})
@@ -235,7 +246,7 @@ class ASRProvider(ASRProviderBase):
                         if conn.asr_audio:
                             for cached_pcm in conn.asr_audio[-10:]:
                                 try:
-                                    await self.asr_ws.send(cached_pcm)
+                                    await session_ws.send(cached_pcm)
                                 except Exception as e:
                                     logger.bind(tag=TAG).warning(f"发送缓存音频失败: {e}")
                                     break
@@ -280,13 +291,15 @@ class ASRProvider(ASRProviderBase):
         finally:
             # 清理连接资源；generation 只存在于任务入参。旧会话 cleanup 不得
             # rotate/清空新会话的 generation，因此仅在本会话仍是当前轮次时收尾。
-            await self._cleanup()
+            await self._cleanup(session_ws)
             if conn.audio_gate.is_current(source_generation):
                 conn.reset_audio_states()
 
     async def _send_stop_request(self):
-        """发送停止识别请求（不关闭连接）"""
-        if self.asr_ws:
+        """发送停止识别请求（不关闭连接，只作用于调用时所属会话）"""
+        session_ws = self.asr_ws
+        session_task_id = self.task_id
+        if session_ws:
             try:
                 # 先停止音频发送
                 self.is_processing = False
@@ -296,37 +309,33 @@ class ASRProvider(ASRProviderBase):
                         "namespace": "SpeechTranscriber",
                         "name": "StopTranscription",
                         "message_id": uuid.uuid4().hex,
-                        "task_id": self.task_id,
+                        "task_id": session_task_id,
                         "appkey": self.appkey
                     }
                 }
                 logger.bind(tag=TAG).debug("停止识别请求已发送")
-                await self.asr_ws.send(json.dumps(stop_msg, ensure_ascii=False))
+                await session_ws.send(json.dumps(stop_msg, ensure_ascii=False))
             except Exception as e:
                 logger.bind(tag=TAG).error(f"发送停止识别请求失败: {e}")
 
-    async def _cleanup(self):
-        """清理资源（关闭连接）"""
-        logger.bind(tag=TAG).debug(f"开始ASR会话清理 | 当前状态: processing={self.is_processing}, server_ready={self.server_ready}")
+    async def _cleanup(self, session_ws=None):
+        """只关闭本会话的 WebSocket；不得触碰后来建立的新会话状态。"""
+        if session_ws is None:
+            session_ws = self.asr_ws
 
-        # 状态重置
-        self.is_processing = False
-        self.server_ready = False
-        logger.bind(tag=TAG).debug("ASR状态已重置")
-
-        # 关闭连接
-        if self.asr_ws:
+        if session_ws is not None:
             try:
-                logger.bind(tag=TAG).debug("正在关闭WebSocket连接")
-                await asyncio.wait_for(self.asr_ws.close(), timeout=2.0)
-                logger.bind(tag=TAG).debug("WebSocket连接已关闭")
+                await asyncio.wait_for(session_ws.close(), timeout=2.0)
             except Exception as e:
                 logger.bind(tag=TAG).error(f"关闭WebSocket连接失败: {e}")
-            finally:
-                self.asr_ws = None
 
-        # 清理任务引用
-        self.forward_task = None
+        # await close() 期间新会话可能已占用 Provider；收尾时重新确认归属。
+        # 若 asr_ws 已被同步停止路径置空且尚无新会话，仍由本任务收尾。
+        if self.asr_ws is session_ws or self.asr_ws is None:
+            self.asr_ws = None
+            self.is_processing = False
+            self.server_ready = False
+            self.forward_task = None
 
         logger.bind(tag=TAG).debug("ASR会话清理完成")
 
@@ -338,4 +347,4 @@ class ASRProvider(ASRProviderBase):
 
     async def close(self):
         """关闭资源"""
-        await self._cleanup()
+        await self._cleanup(self.asr_ws)
