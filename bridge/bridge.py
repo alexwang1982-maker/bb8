@@ -1616,8 +1616,13 @@ class Handler(BaseHTTPRequestHandler):
 
         # 跟随开关（2026-11-22）：放在助手模式之前——安全指令不能被转发到电脑。
         # 关闭必须确定性执行，不能等 LLM 决策；开启也走快通道，避免漏调工具。
-        follow = (follow_request(user_text)
-                  if sem_decision.capability == "self_behavior_set" else None)
+        follow = None
+        if sem_decision.capability == "self_behavior_set":
+            # 用路由已解析出的参数，而不是对整句再跑一次 follow_request：
+            # 复合表达整句会被 follow_request 的长度上限挡掉，关闭指令会漏执行。
+            follow_args = dict(sem_decision.parameters or {})
+            follow_args.pop("tool", None)
+            follow = ("self_behavior_set", follow_args)
         if follow:
             if is_tool_continuation(messages, follow[0]):
                 print("[bridge] follow followup -> LLM", flush=True)

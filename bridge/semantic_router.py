@@ -343,6 +343,36 @@ def _compound_decision(text: str, ctx: RouteContext,
     return _clarify("compound_request", question, 0.7)
 
 
+def _priority_follow_off(text: str,
+                         detectors: Optional[Sequence[Tuple[str, Callable[[str], Any]]]]
+                         ) -> Optional[Dict[str, Any]]:
+    """显式关闭跟随优先于复合澄清与助手模式转发。
+
+    follow_request 有长度上限，复合表达整句可能匹配不到；对整句和每个分句
+    都跑一遍现有探测器，只有产出 self_behavior_set(on=False) 才提升为安全快通道。
+    """
+    candidates = [str(text or "")] + _compound_segments(text)
+    seen = set()
+    for part in candidates:
+        key = part.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        for _, fn in detectors or ():
+            try:
+                result = fn(part)
+            except Exception:
+                continue
+            if not isinstance(result, (tuple, list)) or len(result) != 2:
+                continue
+            tool_name, args = str(result[0]), dict(result[1] or {})
+            if tool_name == "self_behavior_set" and args.get("on") is False:
+                params = dict(args)
+                params.setdefault("tool", tool_name)
+                return params
+    return None
+
+
 # ------------------------------------------------------------- model route IO
 def parse_model_route(raw: Any,
                       allowed_capabilities: Optional[Iterable[str]] = None
@@ -451,6 +481,11 @@ def route_expression(text: str,
     normalized = re.sub(r"\s+", "", raw.strip())
     if not normalized:
         return _unresolvable(raw)
+
+    priority_follow_off = _priority_follow_off(raw, detectors)
+    if priority_follow_off is not None:
+        return _decision(INTENT_DEVICE, "self_behavior_set", priority_follow_off,
+                         0.99, "priority_follow_off")
 
     hit, allowed = _run_detectors(raw, detectors)
     compound = _compound_decision(raw, ctx, detectors, allowed)

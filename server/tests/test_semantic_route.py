@@ -93,6 +93,18 @@ class SemanticRouterTests(unittest.TestCase):
         self.assertEqual("compound_request", d.reason)
         self.assertIn("两件事", d.clarification)
 
+    def test_priority_follow_off_beats_compound_clarify(self):
+        d = self.route("别跟了，然后看看前面是什么", self.visual_ctx)
+        self.assertEqual("device_control", d.intent, decision_dict(d))
+        self.assertEqual("self_behavior_set", d.capability)
+        self.assertIs(d.parameters.get("on"), False)
+        self.assertEqual("priority_follow_off", d.reason)
+
+        # 普通复合表达仍然保持澄清，不被安全快通道改变。
+        ordinary = self.route("先关灯，然后看看前面是什么", self.visual_ctx)
+        self.assertEqual("clarify", ordinary.intent)
+        self.assertEqual("compound_request", ordinary.reason)
+
     def test_vague_requests_clarify(self):
         for text in ("你看看", "帮我看一下", "弄一下那个"):
             with self.subTest(text=text):
@@ -223,6 +235,56 @@ class BridgeDispatchGateTests(unittest.TestCase):
             bridge._ASSISTANT_MODE.pop(key, None)
         content = handler.sent[-1]["choices"][0]["message"]["content"]
         self.assertIn("好，我让电脑助手处理：弄一下那个", content)
+
+    def test_compound_follow_off_executes_in_normal_mode(self):
+        handler = self.make_handler()
+        body = {"messages": [{"role": "user", "content": "别跟了，然后看看前面是什么"}],
+                "stream": False}
+        with patch.object(bridge, "LLM_KEY", ""), \
+                patch.object(bridge, "vision_observe",
+                             side_effect=AssertionError("vision must not run")) as observe, \
+                patch.object(bridge, "get_thread", return_value=("tid", False)) as get_thread, \
+                patch.object(bridge, "run_turn", return_value=("ok", None)) as turn:
+            handler._handle_chat(body)
+        observe.assert_not_called()
+        get_thread.assert_not_called()
+        turn.assert_not_called()
+        call = handler.sent[-1]["choices"][0]["message"]["tool_calls"][0]["function"]
+        self.assertEqual("self_behavior_set", call["name"])
+        self.assertEqual({"on": False}, json.loads(call["arguments"]))
+
+    def test_compound_follow_off_is_not_forwarded_in_assistant_mode(self):
+        handler = self.make_handler()
+        key = "semantic-follow-off-assistant-test"
+        bridge._ASSISTANT_MODE[key] = time.time() + 60
+        body = {"messages": [{"role": "user", "content": "别跟了，然后看看前面是什么"}],
+                "stream": False}
+        forwarded = []
+
+        class NoopThread:
+            def __init__(self, *args, **kwargs):
+                forwarded.append(self)
+
+            def start(self):
+                pass
+
+        try:
+            with patch.dict(os.environ, {"OPENMUSE_FORWARD_TO_OPENCODE": "1"}), \
+                    patch.object(bridge, "session_key", return_value=key), \
+                    patch.object(bridge.threading, "Thread", NoopThread), \
+                    patch.object(bridge, "LLM_KEY", ""), \
+                    patch.object(bridge, "vision_observe",
+                                 side_effect=AssertionError("vision must not run")) as observe:
+                handler._handle_chat(body)
+        finally:
+            bridge._ASSISTANT_MODE.pop(key, None)
+        self.assertEqual([], forwarded)
+        observe.assert_not_called()
+        response = handler.sent[-1]["choices"][0]["message"]
+        self.assertNotIn("好，我让电脑助手处理", response.get("content") or "")
+        call = response["tool_calls"][0]["function"]
+        self.assertEqual("self_behavior_set", call["name"])
+        self.assertEqual({"on": False}, json.loads(call["arguments"]))
 
     def test_visual_question_uses_existing_vision_ability(self):
         handler = self.make_handler()

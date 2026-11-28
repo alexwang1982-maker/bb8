@@ -68,9 +68,9 @@ model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_
 [PASS] route
   用户表达: '别跟了'
   上下文: 关闭跟随安全指令
-  intent=device_control capability=self_behavior_set confidence=0.950 source=deterministic
+  intent=device_control capability=self_behavior_set confidence=0.990 source=deterministic
   parameters={"on": false, "tool": "self_behavior_set"}
-  reason=authorized_detector_capability
+  reason=priority_follow_off
 
 [PASS] route
   用户表达: '摄像头的IP是多少'
@@ -104,7 +104,7 @@ model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_
   用户表达: '你好'
   上下文: 本地快答
   intent=local_fast capability=local_fast confidence=0.950 source=deterministic
-  parameters={"kind": "text", "payload": "你好呀。", "tool": "local_fast"}
+  parameters={"kind": "text", "payload": "在的，你说。", "tool": "local_fast"}
   reason=authorized_detector_capability
 
 [PASS] route
@@ -123,11 +123,18 @@ model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_
 
 [PASS] route
   用户表达: '先关灯，然后看看前面是什么'
-  上下文: 复合请求先澄清
+  上下文: 普通复合请求先澄清
   intent=clarify capability=clarify confidence=0.700 source=deterministic
   parameters={"reason": "compound_request"}
   reason=compound_request
   clarification=你说了两件事：控制机器人硬件、用摄像头看画面。你想我先做哪个？
+
+[PASS] route
+  用户表达: '别跟了，然后看看前面是什么'
+  上下文: 跟随关闭优先于复合澄清
+  intent=device_control capability=self_behavior_set confidence=0.990 source=deterministic
+  parameters={"on": false, "tool": "self_behavior_set"}
+  reason=priority_follow_off
 
 [PASS] route
   用户表达: '你看看'
@@ -161,4 +168,4 @@ model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_
   reason=bare_visual_request|invalid_model_route
   clarification=你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。
 
-SUMMARY: PASS=22 FAIL=0
+SUMMARY: PASS=23 FAIL=0

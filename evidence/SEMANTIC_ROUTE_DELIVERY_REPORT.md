@@ -33,6 +33,7 @@ RouteDecision(intent, capability, parameters, confidence, reason, clarification,
 - 模型只在裸/无上下文视觉指代时被调用，且不带 tools；模型输出必须落在 allowlist 才可能生效。
 - 设备动作仍走 bridge 原有工具调用链和小智侧 `plugins_func/register.py` 已注册工具；语义路由不新增硬件权限。
 - 助手模式入口/退出及「模式内一律转发」状态机保持原顺序；语义澄清放在其后，不截断既有转发行为。
+- 明确的跟随关闭具有最高优先级：先于复合请求澄清和助手模式转发确定性执行；普通复合请求仍澄清。
 - 探测器阶段对 `local_fast` 的 `_last_robot` 写入做快照恢复，避免路由分析改变后续动作状态。
 
 ## 关键纠错
@@ -44,15 +45,16 @@ RouteDecision(intent, capability, parameters, confidence, reason, clarification,
 - `打开眼睛灯` → `device_control / self_eye_set`，不是视觉。
 - `看着我` / `别跟了` → `device_control / self_behavior_set`。
 - `摄像头的IP是多少` → `self_camera_send`；`摄像头识别结果是什么` → `self_camera_latest`，都不抓图。
+- `别跟了，然后看看前面是什么` → `device_control / self_behavior_set(on=False)`，先关闭跟随，不澄清、不转发电脑助手。
 - 模型伪造 `device_control/self_motor_drive` → 被 allowlist 拒绝，维持 `clarify`，且异常原因记录为 `invalid_model_route`。
 
-完整逐例结果见 `evidence/SEMANTIC_ROUTE_KEY_CASES.txt`（22 PASS / 0 FAIL）。
+完整逐例结果见 `evidence/SEMANTIC_ROUTE_KEY_CASES.txt`（23 PASS / 0 FAIL）。
 
 ## 测试证据
 
 | 套件 | 命令 | 结果 |
 | --- | --- | --- |
-| 语义路由专项 | `python -B -m unittest discover -s server/tests -p test_semantic_route.py -v` | `Ran 13 tests` / `OK` |
+| 语义路由专项 | `python -B -m unittest discover -s server/tests -p test_semantic_route.py -v` | `Ran 16 tests` / `OK` |
 | R1 安全回归 | `python -B -m unittest tests.test_bb8_voice_safety_r1 -v`（xiaozhi-server venv2） | `Ran 35 tests` / `OK` |
 
 原始输出：
@@ -61,7 +63,7 @@ RouteDecision(intent, capability, parameters, confidence, reason, clarification,
 - `evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt`
 - `evidence/SEMANTIC_ROUTE_KEY_CASES.txt`
 
-专项测试覆盖：同关键词不同上下文、口语 ASR、复合请求、模糊请求、错误路由、任务/转发、记忆/音乐/本地快答、探测器无副作用、助手模式保持、模型输出异常（数组、非法参数、越界置信度、未知 intent、伪造设备工具、非 JSON）。
+专项测试覆盖：同关键词不同上下文、口语 ASR、复合请求、跟随关闭优先（普通模式 + 助手模式）、模糊请求、错误路由、任务/转发、记忆/音乐/本地快答、探测器无副作用、助手模式保持、模型输出异常（数组、非法参数、越界置信度、未知 intent、伪造设备工具、非 JSON）。
 
 所有测试均为 mock；未连接真实摄像头、VLM、设备控制、ASR 云端或部署通道。
 
