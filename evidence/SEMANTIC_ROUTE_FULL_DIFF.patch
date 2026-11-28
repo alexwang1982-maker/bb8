@@ -1,0 +1,1429 @@
+diff --git a/bridge/bridge.py b/bridge/bridge.py
+index c45bccf..d536c44 100644
+--- a/bridge/bridge.py
++++ b/bridge/bridge.py
+@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+ from pathlib import Path
+ 
+ import task_engine  # BB-8 Task Engine：任务状态唯一真源（本模块只做执行器/路由）
++import semantic_router as semantic  # 统一语义路由：只判意图，不注册工具、不新增权限
+ 
+ # 2026-11-22：给 bridge 日志加时间戳，便于按轮次归因各段耗时。
+ # 只覆盖本模块的 print（模块级同名函数），不影响其他模块。
+@@ -474,6 +475,131 @@ def agnes_chat(messages, tools, options=None, on_text=None):
+     return {"content": "".join(content_parts), "tool_calls": calls, "finish_reason": finish_reason_holder[0]}
+ 
+ 
++# ---------------- 统一语义路由（复用现有能力，不新增工具/权限）----------------
++ROBOT_TOOLS = {
++    "self_motor_brake_now", "self_motor_stop", "self_selftest_motor",
++    "self_eye_set", "self_head_turn", "self_head_center", "self_motor_drive",
++}
++CAMERA_TOOL_PREFIX = "self_camera_"
++
++
++def build_semantic_detectors(key=""):
++    """把现有快通道包装成语义路由的授权探测器；工具参数仍由原函数产出。"""
++
++    def _voice(t):
++        v = voice_request(t)
++        return ("set_voice", {"voice": v}) if v else None
++
++    def _memory(t):
++        c = memory_write_request(t)
++        return ("memory_add", {"content": c}) if c else None
++
++    def _music(t):
++        s = music_song_name(t)
++        return ("play_music", {"song_name": s or "random"}) if s is not None else None
++
++    def _local(t):
++        # local_fast 的"转头"分支会写 _last_robot；探测器阶段必须无副作用，
++        # 否则助手模式/普通聊天也会悄悄改掉下一次重复转头的方向。
++        had_last = key in _last_robot
++        old_last = _last_robot.get(key)
++        try:
++            fast = local_fast(t, key)
++        finally:
++            if had_last:
++                _last_robot[key] = old_last
++            else:
++                _last_robot.pop(key, None)
++        if not fast:
++            return None
++        kind, payload = fast
++        return ("local_fast", {"kind": kind, "payload": payload})
++
++    return [
++        ("follow", follow_request),
++        ("voice", _voice),
++        ("robot", robot_request),
++        ("camera_mgmt", camera_mgmt_request),
++        ("camera_latest", camera_latest_request),
++        ("memory", _memory),
++        ("music", _music),
++        ("local_fast", _local),
++    ]
++
++
++def build_semantic_context(messages):
++    """只取解析指代所需的最小上下文，不把整段历史塞给路由器。"""
++    users, tool_names = [], []
++    has_visual = False
++    for m in messages or []:
++        if not isinstance(m, dict):
++            continue
++        role = m.get("role")
++        content = m.get("content")
++        if role == "user":
++            if isinstance(content, list):
++                text = " ".join(p.get("text", "") for p in content
++                                if isinstance(p, dict) and p.get("type") == "text")
++            else:
++                text = str(content or "")
++            if text.strip():
++                users.append(text.strip())
++        elif role == "assistant":
++            for tc in (m.get("tool_calls") or []):
++                if isinstance(tc, dict):
++                    name = str((tc.get("function") or {}).get("name") or "")
++                    if name:
++                        tool_names.append(name)
++        elif role == "system":
++            s = str(content or "")
++            if "<vision_observation>" in s or "视觉观察可信边界" in s:
++                has_visual = True
++    recent = users[:-1][-4:]  # 最后一条是当前表达，单独传给路由器
++    if not has_visual:
++        has_visual = any(any(w in t for w in semantic.VISUAL_CONTEXT_WORDS)
++                         for t in recent)
++    return semantic.RouteContext.make(
++        recent_user_texts=recent,
++        recent_tool_names=tool_names[-8:],
++        has_visual_context=has_visual,
++    )
++
++
++def model_semantic_route(text, context):
++    """仅在语义指代模糊时调用已有 AGNES；不带 tools，模型无权触发硬件。"""
++    if not LLM_KEY:
++        return None
++    ctx_obj = {
++        "recent_user_texts": list(context.recent_user_texts),
++        "recent_tool_names": list(context.recent_tool_names),
++        "has_visual_context": bool(context.has_visual_context),
++    }
++    prompt = (
++        "你是 BB-8 的语义路由器。只输出一个 JSON 对象，不要解释、不要代码块。\n"
++        "字段：intent, capability, parameters, confidence。\n"
++        "intent 只能是 chat/vision/task/device_control/memory/music/clarify/unresolvable。\n"
++        "拿不准就输出 clarify，不要把普通聊天判成视觉或设备动作。\n"
++        "用户表达：" + str(text or "") + "\n上下文：" + json.dumps(ctx_obj, ensure_ascii=False)
++    )
++    msgs = [
++        {"role": "system", "content": "你是严格的结构化意图识别器，只输出合法 JSON 对象。"},
++        {"role": "user", "content": prompt},
++    ]
++    try:
++        result = agnes_chat(msgs, None, options={"max_tokens": 160, "temperature": 0})
++        return result.get("content") or ""
++    except Exception as exc:
++        print("[bridge] semantic model route failed: %s" % exc, flush=True)
++        return None
++
++
++def attach_semantic_route(messages, decision):
++    """把明确的路由结果作为 system 背景交给现有 Brain，不新增对话轮次。"""
++    copied = json.loads(json.dumps(messages, ensure_ascii=False))
++    copied.append({"role": "system", "content": semantic.build_route_hint(decision)})
++    return copied
++
++
+ def summarize_for_assistant(text):
+     """2026-11-22：助手模式下，让大模型把用户的话提炼成简洁任务，再转给编码会话。
+     用户要求"它自己有脑子自己会总结"，不原封不动搬原话。失败则退回正则清洗结果。"""
+@@ -1474,9 +1600,24 @@ class Handler(BaseHTTPRequestHandler):
+             self._emit_text(stream, "没听清，再说一遍")
+             return
+ 
++        # 统一语义路由：完整表达 + 最小上下文 -> 单一显式意图。
++        # 关键词快通道只作为「授权探测器」存在，不能再自行抢路由。
++        sem_ctx = build_semantic_context(messages)
++        model_fn = (model_semantic_route
++                    if os.environ.get("OPENMUSE_SEMANTIC_MODEL_ROUTE", "1") != "0" else None)
++        sem_decision = semantic.route_expression(
++            user_text, sem_ctx,
++            detectors=build_semantic_detectors(key),
++            model_route_fn=model_fn,
++        )
++        print("[bridge] semantic_route -> intent=%s capability=%s conf=%.2f source=%s" %
++              (sem_decision.intent, sem_decision.capability,
++               sem_decision.confidence, sem_decision.source), flush=True)
++
+         # 跟随开关（2026-11-22）：放在助手模式之前——安全指令不能被转发到电脑。
+         # 关闭必须确定性执行，不能等 LLM 决策；开启也走快通道，避免漏调工具。
+-        follow = follow_request(user_text)
++        follow = (follow_request(user_text)
++                  if sem_decision.capability == "self_behavior_set" else None)
+         if follow:
+             if is_tool_continuation(messages, follow[0]):
+                 print("[bridge] follow followup -> LLM", flush=True)
+@@ -1529,13 +1670,21 @@ class Handler(BaseHTTPRequestHandler):
+                 print("[bridge] mode-forward dispatched raw=%r" % user_text[:80], flush=True)
+                 return
+ 
+-        voice = voice_request(user_text)
++        # 助手模式入口/退出与"模式内一律转发"已经处理完；此后才允许语义澄清打断。
++        if sem_decision.needs_clarification:
++            self._emit_text(stream, sem_decision.clarification or "没听明白，你再说一遍？")
++            return
++
++        voice = (voice_request(user_text)
++                 if sem_decision.capability == "set_voice" else None)
+         if voice:
+             self._emit_tool_call(stream, "set_voice", {"voice": voice})
+             return
+         # 机器人硬件指令（走设备 MCP 工具）
+         # 只有"工具结果回灌"那一轮才抑制重复；用户正常重复下命令照常执行
+-        robot = robot_request(user_text)
++        robot = (robot_request(user_text)
++                 if sem_decision.intent == semantic.INTENT_DEVICE
++                 and sem_decision.capability in ROBOT_TOOLS else None)
+         if robot:
+             print("[bridge] last_roles=%s" % (
+                 ",".join(str(m.get("role")) for m in messages[-3:] if isinstance(m, dict))), flush=True)
+@@ -1561,7 +1710,8 @@ class Handler(BaseHTTPRequestHandler):
+             return
+         # 音乐请求：点名了歌就先搜下载，只说"放首歌"就随机播本地曲库
+         now = time.time()
+-        song = music_song_name(user_text)
++        song = (music_song_name(user_text)
++                if sem_decision.intent == semantic.INTENT_MUSIC else None)
+         if song is not None and not is_tool_continuation(messages, "play_music"):
+             _pending_song[key] = now
+             if song:
+@@ -1576,7 +1726,8 @@ class Handler(BaseHTTPRequestHandler):
+         # 上一轮刚点过歌：这一句是纯歌名（用户常只回"红豆"两个字）
+         # 窗口只留 20 秒，且一次只能触发一首；搜不到像样的就交回正常对话
+         pend = _pending_song.get(key, 0)
+-        if pend and (now - pend) < 20:
++        if (pend and (now - pend) < 20
++                and sem_decision.intent == semantic.INTENT_CHAT):
+             short = user_text.strip().strip("。！？!?.,，、 ")
+             if short in STOP_WORDS:
+                 _pending_song.pop(key, None)
+@@ -1592,7 +1743,8 @@ class Handler(BaseHTTPRequestHandler):
+                 # 搜不到像样的歌：清掉待点歌状态，这句话按正常对话走
+                 _pending_song.pop(key, None)
+         # 本地快通道：不联网就能答的话，别去绕大模型
+-        fast = local_fast(user_text, key)
++        fast = (local_fast(user_text, key)
++                if sem_decision.intent == semantic.INTENT_LOCAL_FAST else None)
+         if fast:
+             kind, payload = fast
+             print("[bridge] local_fast -> %s %r" % (kind, payload), flush=True)
+@@ -1612,7 +1764,8 @@ class Handler(BaseHTTPRequestHandler):
+                 self._emit_tool_call(stream, payload[0], payload[1])
+             return
+         # 显式记忆：「记住X」「以后叫我X」→ 直接写 OpenMuse，不依赖模型
+-        mem = memory_write_request(user_text)
++        mem = (memory_write_request(user_text)
++               if sem_decision.intent == semantic.INTENT_MEMORY else None)
+         if mem:
+             ok = memory_add(mem)
+             print("[bridge] memory_write -> %r ok=%s" % (mem, ok), flush=True)
+@@ -1620,7 +1773,9 @@ class Handler(BaseHTTPRequestHandler):
+             return
+         # 摄像头管理类（查IP/切识别模式）→ 走设备工具（经主控 UART 发给摄像头）
+         # 必须排在 vision 之前，否则会被"摄像头"触发词截走走抓图
+-        mgmt = camera_mgmt_request(user_text)
++        camera_hit = (sem_decision.intent == semantic.INTENT_DEVICE
++                      and sem_decision.capability.startswith(CAMERA_TOOL_PREFIX))
++        mgmt = camera_mgmt_request(user_text) if camera_hit else None
+         if mgmt:
+             # 工具回灌轮：这次请求是"刚执行完这个工具"的结果回传，
+             # 不能再发一次（实测会连发 5 次），交给大模型总结即可。
+@@ -1632,7 +1787,7 @@ class Handler(BaseHTTPRequestHandler):
+             self._emit_tool_call(stream, mgmt[0], mgmt[1])
+             return
+         # 摄像头"识别结果"类：秒回主控缓存的串口数据（2026-11-22，流式推送的正确用法）
+-        latest = camera_latest_request(user_text)
++        latest = camera_latest_request(user_text) if camera_hit and not mgmt else None
+         if latest:
+             if is_tool_continuation(messages, latest[0]):
+                 print("[bridge] camera_latest followup -> LLM", flush=True)
+@@ -1644,7 +1799,8 @@ class Handler(BaseHTTPRequestHandler):
+         # 视觉：抓图识别成功后，观察进入 Brain 上下文，由 AGNES/OpenMuse 结合问题回答；
+         # 不再把 VLM 的单帧结果直接当最终答案播出。失败仍走固定短句，绝不伪造观察。
+         vision_context = ""
+-        vq = vision_request(user_text)
++        vq = (str(sem_decision.parameters.get("question") or user_text)[:200]
++              if sem_decision.intent == semantic.INTENT_VISION else None)
+         if vq:
+             print("[bridge] vision_look -> %r" % vq, flush=True)
+             ok, observation = vision_observe(vq)
+@@ -1656,6 +1812,8 @@ class Handler(BaseHTTPRequestHandler):
+             messages = attach_vision_context(messages, vision_context)
+             print("[bridge] vision observation -> Brain context (%d chars)" %
+                   len(vision_context), flush=True)
++        if sem_decision.intent == semantic.INTENT_TASK:
++            messages = attach_semantic_route(messages, sem_decision)
+         if LLM_KEY:
+             try:
+                 self._handle_agnes_chat(body, messages, key, stream, persona,
+diff --git a/bridge/semantic_router.py b/bridge/semantic_router.py
+new file mode 100644
+index 0000000..076c492
+--- /dev/null
++++ b/bridge/semantic_router.py
+@@ -0,0 +1,498 @@
++# -*- coding: utf-8 -*-
++"""BB-8 unified semantic intent router.
++
++Turns a full user expression (plus the minimum conversation context) into one
++explicit decision:
++
++    intent, capability, parameters, confidence
++
++The router does not register tools and does not grant permissions. Device
++capabilities are only accepted from detectors supplied by bridge (the existing
++keyword/explicit command helpers), so a model-produced route can never invent a
++hardware tool that the current expression did not authorize.
++"""
++from __future__ import annotations
++
++import json
++import re
++from dataclasses import dataclass, field
++from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
++
++# ------------------------------------------------------------------ constants
++INTENT_CHAT = "chat"
++INTENT_VISION = "vision"
++INTENT_TASK = "task"
++INTENT_DEVICE = "device_control"
++INTENT_MEMORY = "memory"
++INTENT_MUSIC = "music"
++INTENT_LOCAL_FAST = "local_fast"
++INTENT_CLARIFY = "clarify"
++INTENT_UNRESOLVABLE = "unresolvable"
++
++CAP_CHAT = "chat_llm"
++CAP_VISION = "vision_observe"
++CAP_CLARIFY = "clarify"
++CAP_ASK_BRAIN = "ask_brain"
++CAP_FORWARD = "forward_to_pc"
++
++ALL_INTENTS = frozenset({
++    INTENT_CHAT, INTENT_VISION, INTENT_TASK, INTENT_DEVICE,
++    INTENT_MEMORY, INTENT_MUSIC, INTENT_LOCAL_FAST,
++    INTENT_CLARIFY, INTENT_UNRESOLVABLE,
++})
++
++ACTIONABLE_INTENTS = frozenset({
++    INTENT_VISION, INTENT_TASK, INTENT_DEVICE, INTENT_MEMORY, INTENT_MUSIC,
++})
++
++_MODEL_THRESHOLD = 0.75
++_DECISION_THRESHOLD = 0.55
++
++_INTENT_LABELS = {
++    INTENT_VISION: "用摄像头看画面",
++    INTENT_TASK: "交给大脑/电脑助手办事",
++    INTENT_DEVICE: "控制机器人硬件",
++    INTENT_MEMORY: "记住内容",
++    INTENT_MUSIC: "播放音乐",
++    INTENT_LOCAL_FAST: "本地直接回答",
++}
++
++# Colloquial ASR variants are intentionally kept next to the standard wording.
++_VISUAL_VERBS = (
++    "看看", "看一下", "看一眼", "瞧瞧", "瞅瞅", "瞅一眼", "瞄一眼",
++    "拍一下", "拍一张", "拍张照", "拍个照", "识别一下", "读一下", "读一读",
++    "念一下", "念出来",
++)
++_EXPLICIT_VISUAL_NOUNS = (
++    "前面", "面前", "身后", "画面", "照片", "图片", "屏幕", "摄像头",
++    "你穿", "我穿", "身上", "手里", "桌上", "周围", "四周", "这边", "那边",
++)
++_DEICTIC_NOUNS = ("这个", "那个", "这儿", "那儿", "这里", "那里", "它", "这东西", "那东西", "啥", "什么")
++_VISUAL_CONTEXT_WORDS = (
++    "照片", "图片", "画面", "摄像头", "给你看", "发你", "拍了", "拍张", "屏幕上",
++)
++VISUAL_CONTEXT_WORDS = _VISUAL_CONTEXT_WORDS
++_CAPABILITY_INQUIRY = (
++    "你能做什么", "你能干啥", "你能干嘛", "你会什么", "你会啥", "你都会啥",
++    "你有什么功能", "你有什么本事", "你都能干啥", "你能帮我做什么",
++)
++_META_CHAT = (
++    "你看看你", "看看你自己", "看看你说", "看看你干", "你看看这是谁说的",
++    "你看看这叫", "别看看", "不用看",
++)
++_VAGUE_ACTION = (
++    "弄一下", "搞一下", "整一下", "处理一下", "搞一下这个", "弄一下那个",
++    "帮我想想办法", "你看着办",
++)
++_FORWARD_WORDS = (
++    "电脑助手", "编码助手", "opencode", "open code", "open-claw", "改代码",
++    "改固件", "刷机", "改配置", "编译", "部署", "仓库", "git", "提交代码",
++)
++_TASK_VERBS = (
++    "建一个", "建个", "创建", "写一个", "写个", "改一下", "改成", "删掉",
++    "删除", "整理", "下载", "运行", "执行", "生成一个", "做一个", "查一下",
++    "搜索一下", "发邮件", "打开电脑上的",
++)
++
++# "你看看前面是什么" / "帮我看一下照片里是谁" / "读一下屏幕上的字"
++_VISUAL_PATTERNS = tuple(re.compile(p) for p in (
++    r"(?:你|请|帮我|麻烦)(?:就)?(?:看看|看一下|看一眼|瞧瞧|瞅瞅|瞅一眼|瞄一眼)"
++    r"(?:前面|面前|身后|画面|照片|图片|屏幕|摄像头|你穿|我穿|身上|手里|桌上|周围|四周|这里|那里)",
++    r"(?:看看|看一下|看一眼|瞧瞧|瞅瞅|拍一下|拍张照|拍个照|识别一下|读一下|念一下)"
++    r"(?:前面|面前|身后|画面|照片|图片|屏幕|摄像头|你穿|我穿|身上|手里|桌上|周围|四周|这里|那里)",
++    r"你(?:看到|看见|能看见|能看到|看得到)(?:什么|啥|谁|我|不|吗|了|画面|前面)",
++    r"(?:前面|面前|画面|照片|图片|屏幕|摄像头)(?:里|上|中|有|是|显示|拍到|识别)",
++))
++_BARE_VISUAL_PATTERNS = tuple(re.compile(p) for p in (
++    r"^(?:你|请|帮我|麻烦)?(?:看看|看一下|看一眼|瞧瞧|瞅瞅|瞅一眼|瞄一眼|拍一下|拍张照|拍个照|识别一下|读一下|念一下)[。！？!?.,，、~\s]*$",
++    r"^(?:帮我|请|麻烦)(?:看看|看一下|看一眼|瞧瞧|瞅瞅)[吧呀啊呢嘛哦]*$",
++))
++_DEICTIC_VISUAL_PATTERNS = tuple(re.compile(p) for p in (
++    r"(?:你|请|帮我|麻烦)?(?:看看|看一下|看一眼|瞧瞧|瞅瞅|瞅一眼|瞄一眼)(?:这个|那个|这东西|那东西|它)(?:$|[。！？!?吗啥])",
++    r"(?:你|请|帮我|麻烦)?(?:看看|看一下|看一眼)(?:这个|那个)(?:是|有)?(?:什么|啥|谁)",
++    r"(?:你|请|帮我|麻烦)?(?:看看|看一下|看一眼)(?:什么|啥|谁)[。！？!?吗呀呢]*$",
++))
++_COMPOUND_RE = re.compile(r"[，,；;]|(?:然后|接着|再|同时|并且|另外|还有|顺便)")
++
++
++# ------------------------------------------------------------------- decision
++@dataclass(frozen=True)
++class RouteContext:
++    """Minimum context needed to resolve deictic expressions such as "这个"."""
++    recent_user_texts: Tuple[str, ...] = ()
++    recent_tool_names: Tuple[str, ...] = ()
++    has_visual_context: bool = False
++    tool_followup: bool = False
++
++    @classmethod
++    def make(cls,
++             recent_user_texts: Optional[Iterable[str]] = None,
++             recent_tool_names: Optional[Iterable[str]] = None,
++             has_visual_context: bool = False,
++             tool_followup: bool = False) -> "RouteContext":
++        return cls(
++            tuple(str(t) for t in (recent_user_texts or ()) if str(t).strip()),
++            tuple(str(t) for t in (recent_tool_names or ()) if str(t).strip()),
++            bool(has_visual_context),
++            bool(tool_followup),
++        )
++
++
++@dataclass(frozen=True)
++class RouteDecision:
++    intent: str
++    capability: str
++    parameters: Dict[str, Any] = field(default_factory=dict)
++    confidence: float = 0.0
++    reason: str = ""
++    clarification: str = ""
++    source: str = "deterministic"
++
++    def to_dict(self) -> Dict[str, Any]:
++        return {
++            "intent": self.intent,
++            "capability": self.capability,
++            "parameters": dict(self.parameters),
++            "confidence": round(float(self.confidence), 3),
++            "reason": self.reason,
++            "clarification": self.clarification,
++            "source": self.source,
++        }
++
++    @property
++    def needs_clarification(self) -> bool:
++        return self.intent in (INTENT_CLARIFY, INTENT_UNRESOLVABLE)
++
++    @property
++    def actionable(self) -> bool:
++        return self.intent in ACTIONABLE_INTENTS
++
++
++def _decision(intent: str, capability: str, parameters=None, confidence=0.0,
++              reason="", clarification="", source="deterministic") -> RouteDecision:
++    return RouteDecision(intent, capability, dict(parameters or {}),
++                         float(confidence), reason, clarification, source)
++
++
++def _clarify(reason: str, question: str, confidence: float = 0.62) -> RouteDecision:
++    return _decision(INTENT_CLARIFY, CAP_CLARIFY, {"reason": reason},
++                     confidence, reason, question)
++
++
++def _unresolvable(text: str) -> RouteDecision:
++    return _decision(INTENT_UNRESOLVABLE, CAP_CLARIFY, {"input": text[:120]},
++                     0.3, "empty_or_unresolvable", "没听明白，你再说一遍？")
++
++
++# ------------------------------------------------------------------ detectors
++def _run_detectors(text: str,
++                   detectors: Optional[Sequence[Tuple[str, Callable[[str], Any]]]]
++                   ) -> Tuple[Optional[Tuple[str, str, Dict[str, Any]]], Dict[str, str]]:
++    """Run the existing bridge command helpers once and keep a capability allowlist.
++
++    A detector returns either (tool_name, args) or a capability string. Only
++    what the current expression actually produces becomes authorizable.
++    """
++    hit: Optional[Tuple[str, str, Dict[str, Any]]] = None
++    allowed: Dict[str, str] = {}
++    for capability, fn in detectors or ():
++        try:
++            result = fn(text)
++        except Exception:
++            result = None
++        if not result:
++            continue
++        if isinstance(result, str):
++            tool_name, args = result, {}
++        elif isinstance(result, (tuple, list)) and len(result) == 2:
++            tool_name, args = str(result[0]), dict(result[1] or {})
++        else:
++            continue
++        if not tool_name:
++            continue
++        allowed[tool_name] = capability
++        if hit is None:
++            hit = (capability, tool_name, args)
++    return hit, allowed
++
++
++def _has_explicit_visual_noun(t: str) -> bool:
++    return any(w in t for w in _EXPLICIT_VISUAL_NOUNS)
++
++
++def _has_visual_verb(t: str) -> bool:
++    return any(v in t for v in _VISUAL_VERBS)
++
++
++def _is_capability_inquiry(t: str) -> bool:
++    return any(w in t for w in _CAPABILITY_INQUIRY)
++
++
++def _is_meta_chat(t: str) -> bool:
++    return any(w in t for w in _META_CHAT)
++
++
++def _is_vague_action(t: str) -> bool:
++    return any(w in t for w in _VAGUE_ACTION)
++
++
++def _vision_reason(t: str, ctx: RouteContext) -> Optional[str]:
++    if _is_meta_chat(t) or _is_capability_inquiry(t):
++        return None
++    # "眼睛灯" is a hardware command, never a camera request.
++    if "眼睛灯" in t:
++        return None
++    for p in _DEICTIC_VISUAL_PATTERNS:
++        if p.search(t):
++            if ctx.has_visual_context or _has_explicit_visual_noun(t):
++                return "deictic_visual_with_context"
++            return "deictic_visual_needs_context"
++    if any(p.search(t) for p in _VISUAL_PATTERNS):
++        return "explicit_visual_request"
++    if any(p.search(t) for p in _BARE_VISUAL_PATTERNS):
++        return "bare_visual_request"
++    return None
++
++
++def _task_route(t: str, allowed: Dict[str, str], confidence: float) -> Optional[RouteDecision]:
++    if any(w in t.lower() for w in _FORWARD_WORDS):
++        return _decision(INTENT_TASK, CAP_FORWARD, {"question": t}, 0.86, "forward_task")
++    if any(w in t for w in _TASK_VERBS) and len(t) >= 5:
++        return _decision(INTENT_TASK, CAP_ASK_BRAIN, {"question": t},
++                         0.78, "complex_task")
++    return None
++
++
++def _route_single(text: str, ctx: RouteContext,
++                  detector_hit: Optional[Tuple[str, str, Dict[str, Any]]],
++                  allowed: Dict[str, str]) -> RouteDecision:
++    t = re.sub(r"\s+", "", str(text or "").strip().strip("。！？!?.,，、；;~～ "))
++    if not t:
++        return _unresolvable(text or "")
++
++    # Semantic overrides must win over raw keyword hits.
++    if _is_capability_inquiry(t):
++        return _decision(INTENT_CHAT, CAP_CHAT, {"answer": "capability_inquiry"},
++                         0.97, "capability_inquiry_not_vision")
++    if _is_meta_chat(t):
++        return _decision(INTENT_CHAT, CAP_CHAT, {"answer": "meta_chat"},
++                         0.95, "meta_chat_not_vision")
++
++    if detector_hit:
++        capability, tool_name, args = detector_hit
++        # 探测器标签（follow/robot/music/...）是能力分类；真正用于门控的是
++        # 现有工具名。两者都要认，否则 memory/music 会被误降到 device_control。
++        intent = {
++            "self_behavior_set": INTENT_DEVICE,
++            "set_voice": INTENT_DEVICE,
++            "memory_add": INTENT_MEMORY,
++            "play_music": INTENT_MUSIC,
++            "local_fast": INTENT_LOCAL_FAST,
++        }.get(tool_name, {
++            "memory": INTENT_MEMORY,
++            "music": INTENT_MUSIC,
++            "local_fast": INTENT_LOCAL_FAST,
++        }.get(capability, INTENT_DEVICE))
++        params = dict(args)
++        params.setdefault("tool", tool_name)
++        return _decision(intent, tool_name, params, 0.95,
++                         "authorized_detector_capability")
++
++    # Vague requests are clarified before any capability is chosen.
++    if _is_vague_action(t):
++        return _clarify("vague_action", "你要我具体做什么？说清楚要动的设备或要看的内容，我再动手。")
++
++    vreason = _vision_reason(t, ctx)
++    if vreason == "bare_visual_request":
++        return _clarify(vreason, "你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。", 0.58)
++    if vreason == "deictic_visual_needs_context":
++        return _clarify(vreason, "我没看到你指的东西。先让我看摄像头/照片，再说“看看这个是什么”。", 0.6)
++    if vreason == "explicit_visual_request" or vreason == "deictic_visual_with_context":
++        return _decision(INTENT_VISION, CAP_VISION, {"question": str(text).strip()},
++                         0.93 if ctx.has_visual_context else 0.88, vreason)
++
++    task = _task_route(t, allowed, 0.78)
++    if task:
++        return task
++
++    # Ordinary conversation never reaches vision/device fast lanes.
++    return _decision(INTENT_CHAT, CAP_CHAT, {"answer": "llm"},
++                     0.9, "ordinary_chat")
++
++
++def _compound_segments(text: str) -> List[str]:
++    parts = [p.strip(" 。！？!?.,，、；;~～ ") for p in _COMPOUND_RE.split(str(text or ""))]
++    return [p for p in parts if p]
++
++
++def _compound_decision(text: str, ctx: RouteContext,
++                       detectors: Optional[Sequence[Tuple[str, Callable[[str], Any]]]],
++                       allowed: Dict[str, str]) -> Optional[RouteDecision]:
++    parts = _compound_segments(text)
++    if len(parts) < 2:
++        return None
++    decisions = []
++    for part in parts:
++        hit, _ = _run_detectors(part, detectors)
++        decisions.append(_route_single(part, ctx, hit, allowed))
++    actionable = [d for d in decisions if d.actionable]
++    if len(actionable) < 2:
++        return None
++    labels = [_INTENT_LABELS.get(d.intent, d.capability) for d in actionable]
++    question = "你说了两件事：" + "、".join(labels) + "。你想我先做哪个？"
++    return _clarify("compound_request", question, 0.7)
++
++
++# ------------------------------------------------------------- model route IO
++def parse_model_route(raw: Any,
++                      allowed_capabilities: Optional[Iterable[str]] = None
++                      ) -> Optional[RouteDecision]:
++    """Parse a model-produced route JSON defensively.
++
++    Accepts plain JSON or a fenced/embedded JSON object. Rejects arrays,
++    unknown intents/capabilities, non-object parameters and out-of-range
++    confidence. Returns None on every anomaly so callers can keep the
++    deterministic decision.
++    """
++    if isinstance(raw, RouteDecision):
++        return raw
++    if isinstance(raw, bytes):
++        try:
++            raw = raw.decode("utf-8")
++        except Exception:
++            return None
++    if isinstance(raw, dict):
++        obj = raw
++    elif isinstance(raw, str):
++        s = raw.strip()
++        if not s:
++            return None
++        s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s, flags=re.I)
++        if s.startswith("[") or s.endswith("]"):
++            return None  # model must emit exactly one object, not an array
++        candidates = [s]
++        start, end = s.find("{"), s.rfind("}")
++        if start >= 0 and end > start:
++            candidates.append(s[start:end + 1])
++        obj = None
++        for candidate in candidates:
++            try:
++                parsed = json.loads(candidate)
++            except Exception:
++                continue
++            if isinstance(parsed, dict):
++                obj = parsed
++                break
++        if obj is None:
++            return None
++    else:
++        return None
++
++    intent = str(obj.get("intent") or obj.get("intent_type") or "").strip()
++    aliases = {
++        "device": INTENT_DEVICE, "device_control": INTENT_DEVICE,
++        "vision": INTENT_VISION, "visual": INTENT_VISION,
++        "chat": INTENT_CHAT, "normal_chat": INTENT_CHAT,
++        "task": INTENT_TASK, "task_execution": INTENT_TASK,
++        "memory": INTENT_MEMORY, "music": INTENT_MUSIC,
++        "clarify": INTENT_CLARIFY, "unresolvable": INTENT_UNRESOLVABLE,
++    }
++    intent = aliases.get(intent.lower(), intent.lower())
++    if intent not in ALL_INTENTS:
++        return None
++
++    capability = str(obj.get("capability") or obj.get("target") or "").strip()
++    if not capability:
++        return None
++    allowed = set(allowed_capabilities or ())
++    if allowed and capability not in allowed:
++        return None
++
++    params_raw = obj.get("parameters", obj.get("params", {}))
++    if not isinstance(params_raw, dict):
++        return None
++    params = dict(params_raw)
++
++    try:
++        confidence = float(obj.get("confidence", 0.0))
++    except (TypeError, ValueError):
++        return None
++    if not 0.0 <= confidence <= 1.0:
++        return None
++
++    if intent == INTENT_VISION and capability != CAP_VISION:
++        return None
++    if intent == INTENT_CHAT and capability != CAP_CHAT:
++        return None
++    if intent in (INTENT_CLARIFY, INTENT_UNRESOLVABLE) and capability != CAP_CLARIFY:
++        return None
++    if intent == INTENT_TASK and capability not in (CAP_ASK_BRAIN, CAP_FORWARD):
++        return None
++    if intent in (INTENT_DEVICE, INTENT_MEMORY, INTENT_MUSIC, INTENT_LOCAL_FAST):
++        # Device/tool capabilities must have come from bridge detectors.
++        if not allowed or capability not in allowed:
++            return None
++
++    clarification = str(obj.get("clarification") or "").strip()
++    reason = str(obj.get("reason") or "model_route").strip()
++    return _decision(intent, capability, params, confidence, reason,
++                     clarification, source="model")
++
++
++# ------------------------------------------------------------------ public API
++def route_expression(text: str,
++                     context: Optional[RouteContext] = None,
++                     detectors: Optional[Sequence[Tuple[str, Callable[[str], Any]]]] = None,
++                     model_route_fn: Optional[Callable[[str, RouteContext], Any]] = None,
++                     allow_model: bool = True) -> RouteDecision:
++    """Resolve one full user expression into a single executable decision."""
++    ctx = context or RouteContext()
++    raw = str(text or "")
++    normalized = re.sub(r"\s+", "", raw.strip())
++    if not normalized:
++        return _unresolvable(raw)
++
++    hit, allowed = _run_detectors(raw, detectors)
++    compound = _compound_decision(raw, ctx, detectors, allowed)
++    if compound:
++        decision = compound
++    else:
++        decision = _route_single(raw, ctx, hit, allowed)
++
++    # Only ambiguous visual deictics may consult the existing LLM. Deterministic
++    # safety/device/chat routes never need an extra model round trip.
++    can_ask_model = (
++        allow_model and model_route_fn is not None
++        and decision.intent == INTENT_CLARIFY
++        and decision.reason in ("bare_visual_request", "deictic_visual_needs_context")
++        and (ctx.has_visual_context or len(normalized) >= 4)
++    )
++    if can_ask_model:
++        model_allowed = set(allowed) | {CAP_VISION, CAP_CHAT, CAP_CLARIFY, CAP_ASK_BRAIN, CAP_FORWARD}
++        try:
++            model_decision = parse_model_route(model_route_fn(raw, ctx), model_allowed)
++        except Exception:
++            model_decision = None
++        if model_decision and model_decision.confidence >= _MODEL_THRESHOLD:
++            return model_decision
++        print_reason = (model_decision.reason if model_decision else "invalid_model_route")
++        return _decision(decision.intent, decision.capability, decision.parameters,
++                         decision.confidence, decision.reason + "|" + print_reason,
++                         decision.clarification, source="model_fallback")
++
++    return decision
++
++
++def build_route_hint(decision: RouteDecision) -> str:
++    """Compact system hint for the existing Brain/LLM path; adds no capability."""
++    def _safe(v: Any) -> str:
++        return str(v).replace("<", "&lt;").replace(">", "&gt;")[:300]
++
++    return (
++        "\n<semantic_route>\n"
++        "intent=" + _safe(decision.intent) + "\n"
++        "capability=" + _safe(decision.capability) + "\n"
++        "confidence=" + ("%.2f" % float(decision.confidence)) + "\n"
++        "本轮语义路由只用于理解意图；不得调用未在本轮注册/授权的新工具。\n"
++        "</semantic_route>"
++    )
+diff --git a/evidence/SEMANTIC_ROUTE_DELIVERY_REPORT.md b/evidence/SEMANTIC_ROUTE_DELIVERY_REPORT.md
+new file mode 100644
+index 0000000..5fbbb08
+--- /dev/null
++++ b/evidence/SEMANTIC_ROUTE_DELIVERY_REPORT.md
+@@ -0,0 +1,72 @@
++# BB-8 统一语义路由交付报告
++
++## 范围与基线
++
++- 分支：`feat/semantic-route`
++- 基线：`4e9b98bcce6ea1239f10fba68e7297b9b25c817d`（R1 STREAM cleanup-race 最新提交）
++- 未创建、未切换、未修改 `main`
++- 未部署、未重启、未烧录、未触发任何真实硬件
++
++本次只改三类文件：
++
++1. `bridge/semantic_router.py`：新增纯语义路由决策模块。
++2. `bridge/bridge.py`：在既有 `_handle_chat` 分派点做门控；复用原有工具与快通道，不注册新工具。
++3. `server/tests/test_semantic_route.py` + `evidence/*`：回归用例与原始证据。
++
++## 设计要点
++
++完整用户表达 + 最小上下文 → 单一显式决策：
++
++```
++RouteDecision(intent, capability, parameters, confidence, reason, clarification, source)
++```
++
++- `intent`：`chat` / `vision` / `task` / `device_control` / `memory` / `music` / `local_fast` / `clarify` / `unresolvable`
++- `capability`：已有能力或已有工具名（`vision_observe`、`ask_brain`、`forward_to_pc`、`self_eye_set` 等）
++- `parameters`：由现有 detector / 原快通道产出，路由层不自行编造硬件参数
++- `confidence`：确定性结果 0.58~0.97；模型结果必须 ≥0.75 才覆盖
++- `clarification`：模糊、复合、裸指代、无上下文指代先问清，不执行
++
++权限边界：
++
++- 关键词快通道降级为「授权探测器」：只有当前表达实际命中的工具才进入 allowlist。
++- 模型只在裸/无上下文视觉指代时被调用，且不带 tools；模型输出必须落在 allowlist 才可能生效。
++- 设备动作仍走 bridge 原有工具调用链和小智侧 `plugins_func/register.py` 已注册工具；语义路由不新增硬件权限。
++- 助手模式入口/退出及「模式内一律转发」状态机保持原顺序；语义澄清放在其后，不截断既有转发行为。
++- 探测器阶段对 `local_fast` 的 `_last_robot` 写入做快照恢复，避免路由分析改变后续动作状态。
++
++## 关键纠错
++
++- `你看看这个是什么` + 视觉上下文 → `vision / vision_observe`，调用现有 `vision_observe()`。
++- `我看看你能做什么` + 视觉上下文 → `chat / chat_llm`，不再因 `看看` 误触视觉。
++- `你看看这个是什么` 无视觉上下文 → `clarify`，先要指代对象。
++- `你看看前面有什么` / `你瞅瞅前面是啥` / `念一下屏幕上的字` → `vision`。
++- `打开眼睛灯` → `device_control / self_eye_set`，不是视觉。
++- `看着我` / `别跟了` → `device_control / self_behavior_set`。
++- `摄像头的IP是多少` → `self_camera_send`；`摄像头识别结果是什么` → `self_camera_latest`，都不抓图。
++- 模型伪造 `device_control/self_motor_drive` → 被 allowlist 拒绝，维持 `clarify`，且异常原因记录为 `invalid_model_route`。
++
++完整逐例结果见 `evidence/SEMANTIC_ROUTE_KEY_CASES.txt`（22 PASS / 0 FAIL）。
++
++## 测试证据
++
++| 套件 | 命令 | 结果 |
++| --- | --- | --- |
++| 语义路由专项 | `python -B -m unittest discover -s server/tests -p test_semantic_route.py -v` | `Ran 13 tests` / `OK` |
++| R1 安全回归 | `python -B -m unittest tests.test_bb8_voice_safety_r1 -v`（xiaozhi-server venv2） | `Ran 35 tests` / `OK` |
++
++原始输出：
++
++- `evidence/SEMANTIC_ROUTE_TEST_OUTPUT.txt`
++- `evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt`
++- `evidence/SEMANTIC_ROUTE_KEY_CASES.txt`
++
++专项测试覆盖：同关键词不同上下文、口语 ASR、复合请求、模糊请求、错误路由、任务/转发、记忆/音乐/本地快答、探测器无副作用、助手模式保持、模型输出异常（数组、非法参数、越界置信度、未知 intent、伪造设备工具、非 JSON）。
++
++所有测试均为 mock；未连接真实摄像头、VLM、设备控制、ASR 云端或部署通道。
++
++## 交付说明
++
++- 全量补丁：`evidence/SEMANTIC_ROUTE_FULL_DIFF.patch`
++- 工作副本哈希：`evidence/SEMANTIC_ROUTE_SHA256.csv`
++- 最终提交 SHA：见交付回复或 `git log -1 --format=%H`（报告在提交前生成，避免自引用）
+diff --git a/evidence/SEMANTIC_ROUTE_KEY_CASES.txt b/evidence/SEMANTIC_ROUTE_KEY_CASES.txt
+new file mode 100644
+index 0000000..9078f96
+--- /dev/null
++++ b/evidence/SEMANTIC_ROUTE_KEY_CASES.txt
+@@ -0,0 +1,164 @@
++BB-8 统一语义路由关键用例实测结果
++model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_detectors；无网络/无硬件
++
++[PASS] route
++  用户表达: '你看看这个是什么'
++  上下文: 有视觉上下文的同词指代
++  intent=vision capability=vision_observe confidence=0.930 source=deterministic
++  parameters={"question": "你看看这个是什么"}
++  reason=deictic_visual_with_context
++
++[PASS] route
++  用户表达: '我看看你能做什么'
++  上下文: 同关键词但为能力询问
++  intent=chat capability=chat_llm confidence=0.970 source=deterministic
++  parameters={"answer": "capability_inquiry"}
++  reason=capability_inquiry_not_vision
++
++[PASS] route
++  用户表达: '你看看这个是什么'
++  上下文: 无指代上下文先澄清
++  intent=clarify capability=clarify confidence=0.600 source=deterministic
++  parameters={"reason": "deictic_visual_needs_context"}
++  reason=deictic_visual_needs_context
++  clarification=我没看到你指的东西。先让我看摄像头/照片，再说“看看这个是什么”。
++
++[PASS] route
++  用户表达: '你看看前面有什么'
++  上下文: 显式视觉目标
++  intent=vision capability=vision_observe confidence=0.880 source=deterministic
++  parameters={"question": "你看看前面有什么"}
++  reason=explicit_visual_request
++
++[PASS] route
++  用户表达: '你瞅瞅前面是啥'
++  上下文: 口语 ASR 变体
++  intent=vision capability=vision_observe confidence=0.880 source=deterministic
++  parameters={"question": "你瞅瞅前面是啥"}
++  reason=explicit_visual_request
++
++[PASS] route
++  用户表达: '帮我拍张照看看桌上'
++  上下文: 口语拍摄+目标
++  intent=vision capability=vision_observe confidence=0.880 source=deterministic
++  parameters={"question": "帮我拍张照看看桌上"}
++  reason=explicit_visual_request
++
++[PASS] route
++  用户表达: '念一下屏幕上的字'
++  上下文: 读屏请求
++  intent=vision capability=vision_observe confidence=0.880 source=deterministic
++  parameters={"question": "念一下屏幕上的字"}
++  reason=explicit_visual_request
++
++[PASS] route
++  用户表达: '打开眼睛灯'
++  上下文: 眼睛灯是硬件非视觉
++  intent=device_control capability=self_eye_set confidence=0.950 source=deterministic
++  parameters={"on": true, "tool": "self_eye_set"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '看着我'
++  上下文: 跟随开关
++  intent=device_control capability=self_behavior_set confidence=0.950 source=deterministic
++  parameters={"on": true, "tool": "self_behavior_set"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '别跟了'
++  上下文: 关闭跟随安全指令
++  intent=device_control capability=self_behavior_set confidence=0.950 source=deterministic
++  parameters={"on": false, "tool": "self_behavior_set"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '摄像头的IP是多少'
++  上下文: 摄像头管理非抓图
++  intent=device_control capability=self_camera_send confidence=0.950 source=deterministic
++  parameters={"command": "sta_ip", "tool": "self_camera_send", "wait_ms": 2000}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '摄像头识别结果是什么'
++  上下文: 读缓存非抓图
++  intent=device_control capability=self_camera_latest confidence=0.950 source=deterministic
++  parameters={"tool": "self_camera_latest"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '记住我叫小王'
++  上下文: 显式记忆
++  intent=memory capability=memory_add confidence=0.950 source=deterministic
++  parameters={"content": "我叫小王", "tool": "memory_add"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '放首歌'
++  上下文: 音乐请求
++  intent=music capability=play_music confidence=0.950 source=deterministic
++  parameters={"song_name": "random", "tool": "play_music"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '你好'
++  上下文: 本地快答
++  intent=local_fast capability=local_fast confidence=0.950 source=deterministic
++  parameters={"kind": "text", "payload": "你好呀。", "tool": "local_fast"}
++  reason=authorized_detector_capability
++
++[PASS] route
++  用户表达: '帮我建个文本文档'
++  上下文: Brain 任务
++  intent=task capability=ask_brain confidence=0.780 source=deterministic
++  parameters={"question": "帮我建个文本文档"}
++  reason=complex_task
++
++[PASS] route
++  用户表达: '让电脑助手改一下代码'
++  上下文: 转发电脑助手
++  intent=task capability=forward_to_pc confidence=0.860 source=deterministic
++  parameters={"question": "让电脑助手改一下代码"}
++  reason=forward_task
++
++[PASS] route
++  用户表达: '先关灯，然后看看前面是什么'
++  上下文: 复合请求先澄清
++  intent=clarify capability=clarify confidence=0.700 source=deterministic
++  parameters={"reason": "compound_request"}
++  reason=compound_request
++  clarification=你说了两件事：控制机器人硬件、用摄像头看画面。你想我先做哪个？
++
++[PASS] route
++  用户表达: '你看看'
++  上下文: 裸看请求先澄清
++  intent=clarify capability=clarify confidence=0.580 source=deterministic
++  parameters={"reason": "bare_visual_request"}
++  reason=bare_visual_request
++  clarification=你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。
++
++[PASS] route
++  用户表达: '弄一下那个'
++  上下文: 模糊动作先澄清
++  intent=clarify capability=clarify confidence=0.620 source=deterministic
++  parameters={"reason": "vague_action"}
++  reason=vague_action
++  clarification=你要我具体做什么？说清楚要动的设备或要看的内容，我再动手。
++
++[PASS] route
++  用户表达: ''
++  上下文: 空表达不可解析
++  intent=unresolvable capability=clarify confidence=0.300 source=deterministic
++  parameters={"input": ""}
++  reason=empty_or_unresolvable
++  clarification=没听明白，你再说一遍？
++
++[PASS] model-anomaly
++  用户表达: '看看'
++  上下文: 有视觉上下文；模型伪造 device_control/self_motor_drive
++  intent=clarify capability=clarify confidence=0.580 source=model_fallback
++  parameters={"reason": "bare_visual_request"}
++  reason=bare_visual_request|invalid_model_route
++  clarification=你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。
++
++SUMMARY: PASS=22 FAIL=0
+diff --git a/evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt b/evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt
+new file mode 100644
+index 0000000..f608b4c
+--- /dev/null
++++ b/evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt
+@@ -0,0 +1,102 @@
++G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
++  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
++test_abort_without_new_round_still_clears (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_abort_without_new_round_still_clears) ... ok
++test_stale_abort_does_not_clear_new_playback (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_stale_abort_does_not_clear_new_playback) ... ok
++test_mqtt_aec_false_does_not_apply_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_false_does_not_apply_aec) ... ok
++test_mqtt_aec_true_with_valid_timestamp_applies_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_true_with_valid_timestamp_applies_aec) ... ok
++test_mqtt_audio_is_also_barge_gated_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_audio_is_also_barge_gated_during_playback) ... ok
++test_websocket_entry_gates_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_websocket_entry_gates_during_playback) ... ok
++test_normal_audio_flows_when_not_playing (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_normal_audio_flows_when_not_playing) ... ok
++test_playback_frames_go_only_to_barge_queue (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_playback_frames_go_only_to_barge_queue) ... ok
++test_receive_audio_handle_is_not_called_for_barge_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_receive_audio_handle_is_not_called_for_barge_frames) ... ok
++test_reset_drains_queues_and_invalidates_old_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_reset_drains_queues_and_invalidates_old_frames) ... ok
++test_stale_frames_are_not_dispatched (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_stale_frames_are_not_dispatched) ... ok
++test_concurrent_gate_changes_keep_generation_consistent (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_concurrent_gate_changes_keep_generation_consistent) ... ok
++test_rotate_holds_lock_for_whole_state_change (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_rotate_holds_lock_for_whole_state_change) ... ok
++test_explicit_none_rejected_even_when_connection_generation_valid (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_explicit_none_rejected_even_when_connection_generation_valid)
++旧回调明确传 None：即使连接侧 generation 有效也不得借用。 ... ok
++test_listen_stop_passes_source_generation_before_reset (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_listen_stop_passes_source_generation_before_reset) ... ok
++test_new_round_during_asr_drops_brain_dispatch (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_new_round_during_asr_drops_brain_dispatch) ... ok
++test_none_generation_is_not_authorization (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_none_generation_is_not_authorization) ... ok
++test_old_voiceprint_enrollment_dropped_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_old_voiceprint_enrollment_dropped_after_new_round) ... ok
++test_stale_stream_captured_generation_rejected_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_stale_stream_captured_generation_rejected_after_new_round)
++STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。 ... ok
++test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stale_sentence_stop_does_not_clear_current_playback) ... ok
++test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clears_speaking_even_when_send_fails) ... ok
++test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.test_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
++test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_doubao_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_doubao_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '130ec790-1107-4522-820d-d4fd3efd2fa0'}[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': 'b61efdc7-660c-4df7-a410-36e46ab5daea', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++ok
++test_xunfei_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_xunfei_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_aliyunbl_exception_cleanup_keeps_new_reservation (tests.test_bb8_voice_safety_r1.TestStreamExceptionCleanupReservation.test_aliyunbl_exception_cleanup_keeps_new_reservation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[31m[1mERROR[0m-[92m建立ASR连接失败: 旧会话发送失败[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[31m[1mERROR[0m-[92m发送finish-task指令失败: 旧会话发送失败[0m
++ok
++test_xunfei_exception_cleanup_keeps_new_reservation (tests.test_bb8_voice_safety_r1.TestStreamExceptionCleanupReservation.test_xunfei_exception_cleanup_keeps_new_reservation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[31m[1mERROR[0m-[92m建立ASR连接失败: 旧会话发送失败[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++ok
++test_aliyun_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyun_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_aliyunbl_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyunbl_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_doubao_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_doubao_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++ok
++test_xunfei_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_xunfei_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_aliyun_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyun_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_aliyunbl_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyunbl_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++test_doubao_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_doubao_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '435abe09-9673-49ae-82d5-538d12be1809'}[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': 'a3c9cb92-9167-4291-aafc-aa81271190e7', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
++ok
++test_xunfei_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_xunfei_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
++[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
++ok
++
++----------------------------------------------------------------------
++Ran 35 tests in 2.677s
++
++OK
+diff --git a/evidence/SEMANTIC_ROUTE_SHA256.csv b/evidence/SEMANTIC_ROUTE_SHA256.csv
+new file mode 100644
+index 0000000..f9e853c
+--- /dev/null
++++ b/evidence/SEMANTIC_ROUTE_SHA256.csv
+@@ -0,0 +1,7 @@
++bridge/bridge.py,105687,8424e85c10dce6d89fd31dc657b9deb4def0cbccb512aec32753b26fec773a3c
++bridge/semantic_router.py,20584,46097dd9b589d763b744ff808f584594beb6acee08948ec5efbe3d3f149104f6
++server/tests/test_semantic_route.py,11073,c95029b4e07787e08641f29dfaf6958bec7cc9757fca3e00641b50164b795e60
++evidence/SEMANTIC_ROUTE_TEST_OUTPUT.txt,2341,82daa5589b47d88cf19e6f50433f4a66aa0ea57127f8f855d99b4e2db4f40286
++evidence/SEMANTIC_ROUTE_R1_REGRESSION_OUTPUT.txt,16345,ea5407d4176b5e07cb065136d71e6a8e8a88e565f5c01677cc08f72a332471ad
++evidence/SEMANTIC_ROUTE_KEY_CASES.txt,6590,dee07ef6fd056952714efa2a45c1db921e8109ed736ace23cd42ceb9e109da42
++evidence/SEMANTIC_ROUTE_DELIVERY_REPORT.md,4057,f8d622ccc8bf6f12f756322054868c92217e941e6d6c5086f9c01d062a427fad
+diff --git a/evidence/SEMANTIC_ROUTE_TEST_OUTPUT.txt b/evidence/SEMANTIC_ROUTE_TEST_OUTPUT.txt
+new file mode 100644
+index 0000000..479888e
+--- /dev/null
++++ b/evidence/SEMANTIC_ROUTE_TEST_OUTPUT.txt
+@@ -0,0 +1,24 @@
++test_assistant_mode_still_forwards_vague_expression (test_semantic_route.BridgeDispatchGateTests.test_assistant_mode_still_forwards_vague_expression) ... [15:12:37] [bridge] semantic_route -> intent=clarify capability=clarify conf=0.62 source=deterministic
++[15:12:37] [bridge] mode-forward dispatched raw='弄一下那个'
++ok
++test_capability_inquiry_never_calls_vision (test_semantic_route.BridgeDispatchGateTests.test_capability_inquiry_never_calls_vision) ... [15:12:37] [bridge] semantic_route -> intent=chat capability=chat_llm conf=0.97 source=deterministic
++ok
++test_visual_question_uses_existing_vision_ability (test_semantic_route.BridgeDispatchGateTests.test_visual_question_uses_existing_vision_ability) ... [15:12:37] [bridge] semantic_route -> intent=vision capability=vision_observe conf=0.93 source=deterministic
++[15:12:37] [bridge] vision_look -> '你看看这个是什么'
++[15:12:37] [bridge] vision observation -> Brain context (274 chars)
++ok
++test_colloquial_phrasing (test_semantic_route.SemanticRouterTests.test_colloquial_phrasing) ... ok
++test_compound_request_clarifies (test_semantic_route.SemanticRouterTests.test_compound_request_clarifies) ... ok
++test_detector_phase_does_not_mutate_last_robot_direction (test_semantic_route.SemanticRouterTests.test_detector_phase_does_not_mutate_last_robot_direction) ... ok
++test_explicit_vision_and_device_guards (test_semantic_route.SemanticRouterTests.test_explicit_vision_and_device_guards) ... ok
++test_model_route_cannot_grant_unauthorized_device_tool (test_semantic_route.SemanticRouterTests.test_model_route_cannot_grant_unauthorized_device_tool) ... ok
++test_parse_model_route_valid_and_invalid (test_semantic_route.SemanticRouterTests.test_parse_model_route_valid_and_invalid) ... ok
++test_same_keyword_different_context (test_semantic_route.SemanticRouterTests.test_same_keyword_different_context) ... ok
++test_task_routes (test_semantic_route.SemanticRouterTests.test_task_routes) ... ok
++test_vague_requests_clarify (test_semantic_route.SemanticRouterTests.test_vague_requests_clarify) ... ok
++test_valid_model_route_can_disambiguate_visual_request (test_semantic_route.SemanticRouterTests.test_valid_model_route_can_disambiguate_visual_request) ... ok
++
++----------------------------------------------------------------------
++Ran 13 tests in 0.019s
++
++OK
+diff --git a/server/tests/test_semantic_route.py b/server/tests/test_semantic_route.py
+new file mode 100644
+index 0000000..84ee523
+--- /dev/null
++++ b/server/tests/test_semantic_route.py
+@@ -0,0 +1,247 @@
++"""BB-8 semantic routing regression tests (no network, no hardware).
++
++Run from the repository root with the Python 3.12 interpreter:
++    python -B -m unittest discover -s server/tests -p test_semantic_route.py -v
++"""
++import json
++import os
++import sys
++import time
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parents[2]
++BRIDGE_DIR = ROOT / "bridge"
++for p in (str(ROOT), str(BRIDGE_DIR)):
++    if p not in sys.path:
++        sys.path.insert(0, p)
++
++import bridge  # noqa: E402
++import semantic_router as semantic  # noqa: E402
++
++
++def decision_dict(decision):
++    return decision.to_dict()
++
++
++class SemanticRouterTests(unittest.TestCase):
++    def setUp(self):
++        self.detectors = bridge.build_semantic_detectors("semantic-route-test")
++        self.visual_ctx = semantic.RouteContext.make(
++            recent_user_texts=("我给你看张照片",),
++            has_visual_context=True,
++        )
++        self.plain_ctx = semantic.RouteContext()
++
++    def route(self, text, ctx=None, model_fn=None):
++        return semantic.route_expression(
++            text, ctx or self.plain_ctx,
++            detectors=self.detectors,
++            model_route_fn=model_fn,
++        )
++
++    # 1. same keyword, different context
++    def test_same_keyword_different_context(self):
++        vision = self.route("你看看这个是什么", self.visual_ctx)
++        self.assertEqual("vision", vision.intent)
++        self.assertEqual("vision_observe", vision.capability)
++        self.assertEqual("你看看这个是什么", vision.parameters["question"])
++        self.assertGreaterEqual(vision.confidence, 0.8)
++
++        chat = self.route("我看看你能做什么", self.visual_ctx)
++        self.assertEqual("chat", chat.intent)
++        self.assertEqual("chat_llm", chat.capability)
++        self.assertNotEqual("vision", chat.intent)
++        self.assertIn("capability_inquiry", chat.reason)
++
++        no_ctx = self.route("你看看这个是什么", self.plain_ctx)
++        self.assertEqual("clarify", no_ctx.intent)
++        self.assertIn("没看到你指的东西", no_ctx.clarification)
++
++    # 2. wrong-routing guards for device vs vision
++    def test_explicit_vision_and_device_guards(self):
++        cases = [
++            ("你看看前面有什么", self.plain_ctx, "vision", "vision_observe"),
++            ("打开眼睛灯", self.plain_ctx, "device_control", "self_eye_set"),
++            ("摄像头的IP是多少", self.plain_ctx, "device_control", "self_camera_send"),
++            ("摄像头识别结果是什么", self.plain_ctx, "device_control", "self_camera_latest"),
++            ("看着我", self.plain_ctx, "device_control", "self_behavior_set"),
++            ("别跟了", self.plain_ctx, "device_control", "self_behavior_set"),
++            ("记住我叫小王", self.plain_ctx, "memory", "memory_add"),
++            ("放首歌", self.plain_ctx, "music", "play_music"),
++            ("你好", self.plain_ctx, "local_fast", "local_fast"),
++        ]
++        for text, ctx, intent, capability in cases:
++            with self.subTest(text=text):
++                d = self.route(text, ctx)
++                self.assertEqual(intent, d.intent, decision_dict(d))
++                self.assertEqual(capability, d.capability, decision_dict(d))
++
++    # 3. colloquial ASR phrasing
++    def test_colloquial_phrasing(self):
++        for text in ("你瞅瞅前面是啥", "帮我拍张照看看桌上", "你看见啥了", "念一下屏幕上的字"):
++            with self.subTest(text=text):
++                d = self.route(text, self.plain_ctx)
++                self.assertEqual("vision", d.intent, decision_dict(d))
++                self.assertEqual("vision_observe", d.capability)
++
++    # 4. compound and vague requests clarify instead of acting
++    def test_compound_request_clarifies(self):
++        d = self.route("先关灯，然后看看前面是什么", self.visual_ctx)
++        self.assertEqual("clarify", d.intent)
++        self.assertEqual("compound_request", d.reason)
++        self.assertIn("两件事", d.clarification)
++
++    def test_vague_requests_clarify(self):
++        for text in ("你看看", "帮我看一下", "弄一下那个"):
++            with self.subTest(text=text):
++                d = self.route(text, self.visual_ctx)
++                self.assertEqual("clarify", d.intent, decision_dict(d))
++                self.assertTrue(d.clarification)
++
++    # 5. task execution stays on existing Brain/forward capabilities
++    def test_task_routes(self):
++        brain = self.route("帮我建个文本文档", self.plain_ctx)
++        self.assertEqual("task", brain.intent)
++        self.assertEqual("ask_brain", brain.capability)
++
++        fwd = self.route("让电脑助手改一下代码", self.plain_ctx)
++        self.assertEqual("task", fwd.intent)
++        self.assertEqual("forward_to_pc", fwd.capability)
++
++    # 6. model-output anomalies cannot invent hardware capability
++    def test_parse_model_route_valid_and_invalid(self):
++        ok = semantic.parse_model_route(
++            '```json\n{"intent":"vision","capability":"vision_observe",'
++            '"parameters":{"question":"看看前面"},"confidence":0.91}\n```',
++            allowed_capabilities={"vision_observe"},
++        )
++        self.assertIsNotNone(ok)
++        self.assertEqual("vision", ok.intent)
++        self.assertEqual("model", ok.source)
++
++        anomalies = [
++            '[{"intent":"chat","capability":"chat_llm","confidence":0.9}]',
++            '{"intent":"vision","capability":"vision_observe","parameters":[],"confidence":0.9}',
++            '{"intent":"vision","capability":"vision_observe","parameters":{},"confidence":9}',
++            '{"intent":"device_control","capability":"self_motor_drive","confidence":0.99}',
++            '{"intent":"unknown","capability":"chat_llm","confidence":0.99}',
++            'not json at all',
++        ]
++        for raw in anomalies:
++            with self.subTest(raw=raw[:40]):
++                self.assertIsNone(semantic.parse_model_route(
++                    raw, allowed_capabilities={"vision_observe", "chat_llm"}))
++
++    def test_detector_phase_does_not_mutate_last_robot_direction(self):
++        key = "semantic-detector-side-effect-test"
++        bridge._last_robot[key] = "left"
++        try:
++            decision = semantic.route_expression(
++                "转头", self.plain_ctx, detectors=bridge.build_semantic_detectors(key))
++            self.assertEqual("local_fast", decision.capability)
++            self.assertEqual("self_head_turn", decision.parameters["payload"][0])
++            self.assertEqual("left", bridge._last_robot[key])
++        finally:
++            bridge._last_robot.pop(key, None)
++
++    def test_model_route_cannot_grant_unauthorized_device_tool(self):
++        def bad_model(text, ctx):
++            return json.dumps({
++                "intent": "device_control",
++                "capability": "self_motor_drive",
++                "parameters": {"speed": 100},
++                "confidence": 0.99,
++            }, ensure_ascii=False)
++
++        d = self.route("看看", self.visual_ctx, model_fn=bad_model)
++        self.assertEqual("clarify", d.intent)
++        self.assertNotEqual("self_motor_drive", d.capability)
++        self.assertIn("invalid_model_route", d.reason)
++
++    def test_valid_model_route_can_disambiguate_visual_request(self):
++        def good_model(text, ctx):
++            return json.dumps({
++                "intent": "vision",
++                "capability": "vision_observe",
++                "parameters": {"question": "看看前面有什么"},
++                "confidence": 0.93,
++            }, ensure_ascii=False)
++
++        d = self.route("看看", self.visual_ctx, model_fn=good_model)
++        self.assertEqual("vision", d.intent)
++        self.assertEqual("model", d.source)
++        self.assertEqual("看看前面有什么", d.parameters["question"])
++
++
++class BridgeDispatchGateTests(unittest.TestCase):
++    """Exercise the real Handler._handle_chat gate without network calls."""
++
++    def make_handler(self):
++        handler = object.__new__(bridge.Handler)
++        handler._stream_started = False
++        handler.sent = []
++        handler._send_json = lambda obj, code=200: handler.sent.append(obj)
++        return handler
++
++    def test_capability_inquiry_never_calls_vision(self):
++        handler = self.make_handler()
++        body = {"messages": [{"role": "user", "content": "我看看你能做什么"}],
++                "stream": False}
++        with patch.object(bridge, "LLM_KEY", ""), \
++                patch.object(bridge, "vision_observe",
++                             side_effect=AssertionError("vision must not run")) as observe, \
++                patch.object(bridge, "get_thread", return_value=("tid", False)), \
++                patch.object(bridge, "run_turn", return_value=("ok", None)) as turn:
++            handler._handle_chat(body)
++        observe.assert_not_called()
++        self.assertEqual("ok", handler.sent[-1]["choices"][0]["message"]["content"])
++        self.assertIn("我看看你能做什么", turn.call_args.args[1])
++
++    def test_assistant_mode_still_forwards_vague_expression(self):
++        handler = self.make_handler()
++        key = "semantic-assistant-mode-test"
++        bridge._ASSISTANT_MODE[key] = time.time() + 60
++        body = {"messages": [{"role": "user", "content": "弄一下那个"}],
++                "stream": False}
++
++        class NoopThread:
++            def __init__(self, *args, **kwargs):
++                pass
++
++            def start(self):
++                pass
++
++        try:
++            with patch.dict(os.environ, {"OPENMUSE_FORWARD_TO_OPENCODE": "1"}), \
++                    patch.object(bridge, "session_key", return_value=key), \
++                    patch.object(bridge.threading, "Thread", NoopThread), \
++                    patch.object(bridge, "LLM_KEY", ""):
++                handler._handle_chat(body)
++        finally:
++            bridge._ASSISTANT_MODE.pop(key, None)
++        content = handler.sent[-1]["choices"][0]["message"]["content"]
++        self.assertIn("好，我让电脑助手处理：弄一下那个", content)
++
++    def test_visual_question_uses_existing_vision_ability(self):
++        handler = self.make_handler()
++        messages = [
++            {"role": "user", "content": "我给你看张照片"},
++            {"role": "user", "content": "你看看这个是什么"},
++        ]
++        body = {"messages": messages, "stream": False}
++        with patch.object(bridge, "LLM_KEY", ""), \
++                patch.object(bridge, "vision_observe",
++                             return_value=(True, "一个杯子")) as observe, \
++                patch.object(bridge, "get_thread", return_value=("tid", False)), \
++                patch.object(bridge, "run_turn", return_value=("ok", None)) as turn:
++            handler._handle_chat(body)
++        observe.assert_called_once_with("你看看这个是什么")
++        context_block = turn.call_args.kwargs["context_block"]
++        self.assertIn("<vision_observation>", context_block)
++        self.assertIn("一个杯子", context_block)
++
++
++if __name__ == "__main__":
++    unittest.main()

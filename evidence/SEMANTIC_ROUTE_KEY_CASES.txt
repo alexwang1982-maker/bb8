@@ -1,0 +1,164 @@
+BB-8 统一语义路由关键用例实测结果
+model_route=off（异常模型用例除外）；detectors=bridge.build_semantic_detectors；无网络/无硬件
+
+[PASS] route
+  用户表达: '你看看这个是什么'
+  上下文: 有视觉上下文的同词指代
+  intent=vision capability=vision_observe confidence=0.930 source=deterministic
+  parameters={"question": "你看看这个是什么"}
+  reason=deictic_visual_with_context
+
+[PASS] route
+  用户表达: '我看看你能做什么'
+  上下文: 同关键词但为能力询问
+  intent=chat capability=chat_llm confidence=0.970 source=deterministic
+  parameters={"answer": "capability_inquiry"}
+  reason=capability_inquiry_not_vision
+
+[PASS] route
+  用户表达: '你看看这个是什么'
+  上下文: 无指代上下文先澄清
+  intent=clarify capability=clarify confidence=0.600 source=deterministic
+  parameters={"reason": "deictic_visual_needs_context"}
+  reason=deictic_visual_needs_context
+  clarification=我没看到你指的东西。先让我看摄像头/照片，再说“看看这个是什么”。
+
+[PASS] route
+  用户表达: '你看看前面有什么'
+  上下文: 显式视觉目标
+  intent=vision capability=vision_observe confidence=0.880 source=deterministic
+  parameters={"question": "你看看前面有什么"}
+  reason=explicit_visual_request
+
+[PASS] route
+  用户表达: '你瞅瞅前面是啥'
+  上下文: 口语 ASR 变体
+  intent=vision capability=vision_observe confidence=0.880 source=deterministic
+  parameters={"question": "你瞅瞅前面是啥"}
+  reason=explicit_visual_request
+
+[PASS] route
+  用户表达: '帮我拍张照看看桌上'
+  上下文: 口语拍摄+目标
+  intent=vision capability=vision_observe confidence=0.880 source=deterministic
+  parameters={"question": "帮我拍张照看看桌上"}
+  reason=explicit_visual_request
+
+[PASS] route
+  用户表达: '念一下屏幕上的字'
+  上下文: 读屏请求
+  intent=vision capability=vision_observe confidence=0.880 source=deterministic
+  parameters={"question": "念一下屏幕上的字"}
+  reason=explicit_visual_request
+
+[PASS] route
+  用户表达: '打开眼睛灯'
+  上下文: 眼睛灯是硬件非视觉
+  intent=device_control capability=self_eye_set confidence=0.950 source=deterministic
+  parameters={"on": true, "tool": "self_eye_set"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '看着我'
+  上下文: 跟随开关
+  intent=device_control capability=self_behavior_set confidence=0.950 source=deterministic
+  parameters={"on": true, "tool": "self_behavior_set"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '别跟了'
+  上下文: 关闭跟随安全指令
+  intent=device_control capability=self_behavior_set confidence=0.950 source=deterministic
+  parameters={"on": false, "tool": "self_behavior_set"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '摄像头的IP是多少'
+  上下文: 摄像头管理非抓图
+  intent=device_control capability=self_camera_send confidence=0.950 source=deterministic
+  parameters={"command": "sta_ip", "tool": "self_camera_send", "wait_ms": 2000}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '摄像头识别结果是什么'
+  上下文: 读缓存非抓图
+  intent=device_control capability=self_camera_latest confidence=0.950 source=deterministic
+  parameters={"tool": "self_camera_latest"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '记住我叫小王'
+  上下文: 显式记忆
+  intent=memory capability=memory_add confidence=0.950 source=deterministic
+  parameters={"content": "我叫小王", "tool": "memory_add"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '放首歌'
+  上下文: 音乐请求
+  intent=music capability=play_music confidence=0.950 source=deterministic
+  parameters={"song_name": "random", "tool": "play_music"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '你好'
+  上下文: 本地快答
+  intent=local_fast capability=local_fast confidence=0.950 source=deterministic
+  parameters={"kind": "text", "payload": "你好呀。", "tool": "local_fast"}
+  reason=authorized_detector_capability
+
+[PASS] route
+  用户表达: '帮我建个文本文档'
+  上下文: Brain 任务
+  intent=task capability=ask_brain confidence=0.780 source=deterministic
+  parameters={"question": "帮我建个文本文档"}
+  reason=complex_task
+
+[PASS] route
+  用户表达: '让电脑助手改一下代码'
+  上下文: 转发电脑助手
+  intent=task capability=forward_to_pc confidence=0.860 source=deterministic
+  parameters={"question": "让电脑助手改一下代码"}
+  reason=forward_task
+
+[PASS] route
+  用户表达: '先关灯，然后看看前面是什么'
+  上下文: 复合请求先澄清
+  intent=clarify capability=clarify confidence=0.700 source=deterministic
+  parameters={"reason": "compound_request"}
+  reason=compound_request
+  clarification=你说了两件事：控制机器人硬件、用摄像头看画面。你想我先做哪个？
+
+[PASS] route
+  用户表达: '你看看'
+  上下文: 裸看请求先澄清
+  intent=clarify capability=clarify confidence=0.580 source=deterministic
+  parameters={"reason": "bare_visual_request"}
+  reason=bare_visual_request
+  clarification=你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。
+
+[PASS] route
+  用户表达: '弄一下那个'
+  上下文: 模糊动作先澄清
+  intent=clarify capability=clarify confidence=0.620 source=deterministic
+  parameters={"reason": "vague_action"}
+  reason=vague_action
+  clarification=你要我具体做什么？说清楚要动的设备或要看的内容，我再动手。
+
+[PASS] route
+  用户表达: ''
+  上下文: 空表达不可解析
+  intent=unresolvable capability=clarify confidence=0.300 source=deterministic
+  parameters={"input": ""}
+  reason=empty_or_unresolvable
+  clarification=没听明白，你再说一遍？
+
+[PASS] model-anomaly
+  用户表达: '看看'
+  上下文: 有视觉上下文；模型伪造 device_control/self_motor_drive
+  intent=clarify capability=clarify confidence=0.580 source=model_fallback
+  parameters={"reason": "bare_visual_request"}
+  reason=bare_visual_request|invalid_model_route
+  clarification=你想让我看什么？可以说“看看前面”“看看照片”或“看看摄像头画面”。
+
+SUMMARY: PASS=22 FAIL=0

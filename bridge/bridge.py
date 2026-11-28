@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import task_engine  # BB-8 Task Engine：任务状态唯一真源（本模块只做执行器/路由）
+import semantic_router as semantic  # 统一语义路由：只判意图，不注册工具、不新增权限
 
 # 2026-11-22：给 bridge 日志加时间戳，便于按轮次归因各段耗时。
 # 只覆盖本模块的 print（模块级同名函数），不影响其他模块。
@@ -472,6 +473,131 @@ def agnes_chat(messages, tools, options=None, on_text=None):
     print("[bridge] AGNES %.2fs, text=%d chars, tools=%d" %
           (time.time() - started, sum(map(len, content_parts)), len(calls)), flush=True)
     return {"content": "".join(content_parts), "tool_calls": calls, "finish_reason": finish_reason_holder[0]}
+
+
+# ---------------- 统一语义路由（复用现有能力，不新增工具/权限）----------------
+ROBOT_TOOLS = {
+    "self_motor_brake_now", "self_motor_stop", "self_selftest_motor",
+    "self_eye_set", "self_head_turn", "self_head_center", "self_motor_drive",
+}
+CAMERA_TOOL_PREFIX = "self_camera_"
+
+
+def build_semantic_detectors(key=""):
+    """把现有快通道包装成语义路由的授权探测器；工具参数仍由原函数产出。"""
+
+    def _voice(t):
+        v = voice_request(t)
+        return ("set_voice", {"voice": v}) if v else None
+
+    def _memory(t):
+        c = memory_write_request(t)
+        return ("memory_add", {"content": c}) if c else None
+
+    def _music(t):
+        s = music_song_name(t)
+        return ("play_music", {"song_name": s or "random"}) if s is not None else None
+
+    def _local(t):
+        # local_fast 的"转头"分支会写 _last_robot；探测器阶段必须无副作用，
+        # 否则助手模式/普通聊天也会悄悄改掉下一次重复转头的方向。
+        had_last = key in _last_robot
+        old_last = _last_robot.get(key)
+        try:
+            fast = local_fast(t, key)
+        finally:
+            if had_last:
+                _last_robot[key] = old_last
+            else:
+                _last_robot.pop(key, None)
+        if not fast:
+            return None
+        kind, payload = fast
+        return ("local_fast", {"kind": kind, "payload": payload})
+
+    return [
+        ("follow", follow_request),
+        ("voice", _voice),
+        ("robot", robot_request),
+        ("camera_mgmt", camera_mgmt_request),
+        ("camera_latest", camera_latest_request),
+        ("memory", _memory),
+        ("music", _music),
+        ("local_fast", _local),
+    ]
+
+
+def build_semantic_context(messages):
+    """只取解析指代所需的最小上下文，不把整段历史塞给路由器。"""
+    users, tool_names = [], []
+    has_visual = False
+    for m in messages or []:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        content = m.get("content")
+        if role == "user":
+            if isinstance(content, list):
+                text = " ".join(p.get("text", "") for p in content
+                                if isinstance(p, dict) and p.get("type") == "text")
+            else:
+                text = str(content or "")
+            if text.strip():
+                users.append(text.strip())
+        elif role == "assistant":
+            for tc in (m.get("tool_calls") or []):
+                if isinstance(tc, dict):
+                    name = str((tc.get("function") or {}).get("name") or "")
+                    if name:
+                        tool_names.append(name)
+        elif role == "system":
+            s = str(content or "")
+            if "<vision_observation>" in s or "视觉观察可信边界" in s:
+                has_visual = True
+    recent = users[:-1][-4:]  # 最后一条是当前表达，单独传给路由器
+    if not has_visual:
+        has_visual = any(any(w in t for w in semantic.VISUAL_CONTEXT_WORDS)
+                         for t in recent)
+    return semantic.RouteContext.make(
+        recent_user_texts=recent,
+        recent_tool_names=tool_names[-8:],
+        has_visual_context=has_visual,
+    )
+
+
+def model_semantic_route(text, context):
+    """仅在语义指代模糊时调用已有 AGNES；不带 tools，模型无权触发硬件。"""
+    if not LLM_KEY:
+        return None
+    ctx_obj = {
+        "recent_user_texts": list(context.recent_user_texts),
+        "recent_tool_names": list(context.recent_tool_names),
+        "has_visual_context": bool(context.has_visual_context),
+    }
+    prompt = (
+        "你是 BB-8 的语义路由器。只输出一个 JSON 对象，不要解释、不要代码块。\n"
+        "字段：intent, capability, parameters, confidence。\n"
+        "intent 只能是 chat/vision/task/device_control/memory/music/clarify/unresolvable。\n"
+        "拿不准就输出 clarify，不要把普通聊天判成视觉或设备动作。\n"
+        "用户表达：" + str(text or "") + "\n上下文：" + json.dumps(ctx_obj, ensure_ascii=False)
+    )
+    msgs = [
+        {"role": "system", "content": "你是严格的结构化意图识别器，只输出合法 JSON 对象。"},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        result = agnes_chat(msgs, None, options={"max_tokens": 160, "temperature": 0})
+        return result.get("content") or ""
+    except Exception as exc:
+        print("[bridge] semantic model route failed: %s" % exc, flush=True)
+        return None
+
+
+def attach_semantic_route(messages, decision):
+    """把明确的路由结果作为 system 背景交给现有 Brain，不新增对话轮次。"""
+    copied = json.loads(json.dumps(messages, ensure_ascii=False))
+    copied.append({"role": "system", "content": semantic.build_route_hint(decision)})
+    return copied
 
 
 def summarize_for_assistant(text):
@@ -1474,9 +1600,24 @@ class Handler(BaseHTTPRequestHandler):
             self._emit_text(stream, "没听清，再说一遍")
             return
 
+        # 统一语义路由：完整表达 + 最小上下文 -> 单一显式意图。
+        # 关键词快通道只作为「授权探测器」存在，不能再自行抢路由。
+        sem_ctx = build_semantic_context(messages)
+        model_fn = (model_semantic_route
+                    if os.environ.get("OPENMUSE_SEMANTIC_MODEL_ROUTE", "1") != "0" else None)
+        sem_decision = semantic.route_expression(
+            user_text, sem_ctx,
+            detectors=build_semantic_detectors(key),
+            model_route_fn=model_fn,
+        )
+        print("[bridge] semantic_route -> intent=%s capability=%s conf=%.2f source=%s" %
+              (sem_decision.intent, sem_decision.capability,
+               sem_decision.confidence, sem_decision.source), flush=True)
+
         # 跟随开关（2026-11-22）：放在助手模式之前——安全指令不能被转发到电脑。
         # 关闭必须确定性执行，不能等 LLM 决策；开启也走快通道，避免漏调工具。
-        follow = follow_request(user_text)
+        follow = (follow_request(user_text)
+                  if sem_decision.capability == "self_behavior_set" else None)
         if follow:
             if is_tool_continuation(messages, follow[0]):
                 print("[bridge] follow followup -> LLM", flush=True)
@@ -1529,13 +1670,21 @@ class Handler(BaseHTTPRequestHandler):
                 print("[bridge] mode-forward dispatched raw=%r" % user_text[:80], flush=True)
                 return
 
-        voice = voice_request(user_text)
+        # 助手模式入口/退出与"模式内一律转发"已经处理完；此后才允许语义澄清打断。
+        if sem_decision.needs_clarification:
+            self._emit_text(stream, sem_decision.clarification or "没听明白，你再说一遍？")
+            return
+
+        voice = (voice_request(user_text)
+                 if sem_decision.capability == "set_voice" else None)
         if voice:
             self._emit_tool_call(stream, "set_voice", {"voice": voice})
             return
         # 机器人硬件指令（走设备 MCP 工具）
         # 只有"工具结果回灌"那一轮才抑制重复；用户正常重复下命令照常执行
-        robot = robot_request(user_text)
+        robot = (robot_request(user_text)
+                 if sem_decision.intent == semantic.INTENT_DEVICE
+                 and sem_decision.capability in ROBOT_TOOLS else None)
         if robot:
             print("[bridge] last_roles=%s" % (
                 ",".join(str(m.get("role")) for m in messages[-3:] if isinstance(m, dict))), flush=True)
@@ -1561,7 +1710,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         # 音乐请求：点名了歌就先搜下载，只说"放首歌"就随机播本地曲库
         now = time.time()
-        song = music_song_name(user_text)
+        song = (music_song_name(user_text)
+                if sem_decision.intent == semantic.INTENT_MUSIC else None)
         if song is not None and not is_tool_continuation(messages, "play_music"):
             _pending_song[key] = now
             if song:
@@ -1576,7 +1726,8 @@ class Handler(BaseHTTPRequestHandler):
         # 上一轮刚点过歌：这一句是纯歌名（用户常只回"红豆"两个字）
         # 窗口只留 20 秒，且一次只能触发一首；搜不到像样的就交回正常对话
         pend = _pending_song.get(key, 0)
-        if pend and (now - pend) < 20:
+        if (pend and (now - pend) < 20
+                and sem_decision.intent == semantic.INTENT_CHAT):
             short = user_text.strip().strip("。！？!?.,，、 ")
             if short in STOP_WORDS:
                 _pending_song.pop(key, None)
@@ -1592,7 +1743,8 @@ class Handler(BaseHTTPRequestHandler):
                 # 搜不到像样的歌：清掉待点歌状态，这句话按正常对话走
                 _pending_song.pop(key, None)
         # 本地快通道：不联网就能答的话，别去绕大模型
-        fast = local_fast(user_text, key)
+        fast = (local_fast(user_text, key)
+                if sem_decision.intent == semantic.INTENT_LOCAL_FAST else None)
         if fast:
             kind, payload = fast
             print("[bridge] local_fast -> %s %r" % (kind, payload), flush=True)
@@ -1612,7 +1764,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._emit_tool_call(stream, payload[0], payload[1])
             return
         # 显式记忆：「记住X」「以后叫我X」→ 直接写 OpenMuse，不依赖模型
-        mem = memory_write_request(user_text)
+        mem = (memory_write_request(user_text)
+               if sem_decision.intent == semantic.INTENT_MEMORY else None)
         if mem:
             ok = memory_add(mem)
             print("[bridge] memory_write -> %r ok=%s" % (mem, ok), flush=True)
@@ -1620,7 +1773,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         # 摄像头管理类（查IP/切识别模式）→ 走设备工具（经主控 UART 发给摄像头）
         # 必须排在 vision 之前，否则会被"摄像头"触发词截走走抓图
-        mgmt = camera_mgmt_request(user_text)
+        camera_hit = (sem_decision.intent == semantic.INTENT_DEVICE
+                      and sem_decision.capability.startswith(CAMERA_TOOL_PREFIX))
+        mgmt = camera_mgmt_request(user_text) if camera_hit else None
         if mgmt:
             # 工具回灌轮：这次请求是"刚执行完这个工具"的结果回传，
             # 不能再发一次（实测会连发 5 次），交给大模型总结即可。
@@ -1632,7 +1787,7 @@ class Handler(BaseHTTPRequestHandler):
             self._emit_tool_call(stream, mgmt[0], mgmt[1])
             return
         # 摄像头"识别结果"类：秒回主控缓存的串口数据（2026-11-22，流式推送的正确用法）
-        latest = camera_latest_request(user_text)
+        latest = camera_latest_request(user_text) if camera_hit and not mgmt else None
         if latest:
             if is_tool_continuation(messages, latest[0]):
                 print("[bridge] camera_latest followup -> LLM", flush=True)
@@ -1644,7 +1799,8 @@ class Handler(BaseHTTPRequestHandler):
         # 视觉：抓图识别成功后，观察进入 Brain 上下文，由 AGNES/OpenMuse 结合问题回答；
         # 不再把 VLM 的单帧结果直接当最终答案播出。失败仍走固定短句，绝不伪造观察。
         vision_context = ""
-        vq = vision_request(user_text)
+        vq = (str(sem_decision.parameters.get("question") or user_text)[:200]
+              if sem_decision.intent == semantic.INTENT_VISION else None)
         if vq:
             print("[bridge] vision_look -> %r" % vq, flush=True)
             ok, observation = vision_observe(vq)
@@ -1656,6 +1812,8 @@ class Handler(BaseHTTPRequestHandler):
             messages = attach_vision_context(messages, vision_context)
             print("[bridge] vision observation -> Brain context (%d chars)" %
                   len(vision_context), flush=True)
+        if sem_decision.intent == semantic.INTENT_TASK:
+            messages = attach_semantic_route(messages, sem_decision)
         if LLM_KEY:
             try:
                 self._handle_agnes_chat(body, messages, key, stream, persona,

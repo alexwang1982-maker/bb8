@@ -1,0 +1,102 @@
+G:\openmuse\xiaozhi-server\.venv2\Lib\site-packages\pydub\utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+test_abort_without_new_round_still_clears (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_abort_without_new_round_still_clears) ... ok
+test_stale_abort_does_not_clear_new_playback (tests.test_bb8_voice_safety_r1.TestAbortRoundIsolation.test_stale_abort_does_not_clear_new_playback) ... ok
+test_mqtt_aec_false_does_not_apply_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_false_does_not_apply_aec) ... ok
+test_mqtt_aec_true_with_valid_timestamp_applies_aec (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_aec_true_with_valid_timestamp_applies_aec) ... ok
+test_mqtt_audio_is_also_barge_gated_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_mqtt_audio_is_also_barge_gated_during_playback) ... ok
+test_websocket_entry_gates_during_playback (tests.test_bb8_voice_safety_r1.TestAudioEntryAndAec.test_websocket_entry_gates_during_playback) ... ok
+test_normal_audio_flows_when_not_playing (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_normal_audio_flows_when_not_playing) ... ok
+test_playback_frames_go_only_to_barge_queue (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_playback_frames_go_only_to_barge_queue) ... ok
+test_receive_audio_handle_is_not_called_for_barge_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_receive_audio_handle_is_not_called_for_barge_frames) ... ok
+test_reset_drains_queues_and_invalidates_old_frames (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_reset_drains_queues_and_invalidates_old_frames) ... ok
+test_stale_frames_are_not_dispatched (tests.test_bb8_voice_safety_r1.TestAudioSourceGate.test_stale_frames_are_not_dispatched) ... ok
+test_concurrent_gate_changes_keep_generation_consistent (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_concurrent_gate_changes_keep_generation_consistent) ... ok
+test_rotate_holds_lock_for_whole_state_change (tests.test_bb8_voice_safety_r1.TestGateAtomicity.test_rotate_holds_lock_for_whole_state_change) ... ok
+test_explicit_none_rejected_even_when_connection_generation_valid (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_explicit_none_rejected_even_when_connection_generation_valid)
+旧回调明确传 None：即使连接侧 generation 有效也不得借用。 ... ok
+test_listen_stop_passes_source_generation_before_reset (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_listen_stop_passes_source_generation_before_reset) ... ok
+test_new_round_during_asr_drops_brain_dispatch (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_new_round_during_asr_drops_brain_dispatch) ... ok
+test_none_generation_is_not_authorization (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_none_generation_is_not_authorization) ... ok
+test_old_voiceprint_enrollment_dropped_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_old_voiceprint_enrollment_dropped_after_new_round) ... ok
+test_stale_stream_captured_generation_rejected_after_new_round (tests.test_bb8_voice_safety_r1.TestListenStopGenerationLifecycle.test_stale_stream_captured_generation_rejected_after_new_round)
+STREAM 会话捕获旧 generation，新轮次已有有效 generation 仍须拒绝。 ... ok
+test_stale_sentence_stop_does_not_clear_current_playback (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stale_sentence_stop_does_not_clear_current_playback) ... ok
+test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.TestPlaybackStateCleanup.test_stop_clears_speaking_even_when_send_fails) ... ok
+test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.test_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
+test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_doubao_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_doubao_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:07[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '130ec790-1107-4522-820d-d4fd3efd2fa0'}[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': 'b61efdc7-660c-4df7-a410-36e46ab5daea', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+ok
+test_xunfei_connect_window_is_not_cleared_by_old_cleanup (tests.test_bb8_voice_safety_r1.TestStreamConnectReservationIsolation.test_xunfei_connect_window_is_not_cleared_by_old_cleanup) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_aliyunbl_exception_cleanup_keeps_new_reservation (tests.test_bb8_voice_safety_r1.TestStreamExceptionCleanupReservation.test_aliyunbl_exception_cleanup_keeps_new_reservation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[31m[1mERROR[0m-[92m建立ASR连接失败: 旧会话发送失败[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[31m[1mERROR[0m-[92m发送finish-task指令失败: 旧会话发送失败[0m
+ok
+test_xunfei_exception_cleanup_keeps_new_reservation (tests.test_bb8_voice_safety_r1.TestStreamExceptionCleanupReservation.test_xunfei_exception_cleanup_keeps_new_reservation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[31m[1mERROR[0m-[92m建立ASR连接失败: 旧会话发送失败[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+ok
+test_aliyun_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyun_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_aliyunbl_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_aliyunbl_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_doubao_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_doubao_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+ok
+test_xunfei_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_xunfei_stream_task_keeps_own_generation) ... [32m261128 15:13:08[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_aliyun_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyun_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_aliyunbl_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_aliyunbl_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+test_doubao_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_doubao_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务，headers: {'X-Api-App-Key': 'test', 'X-Api-Access-Key': 'test', 'X-Api-Resource-Id': 'volc.bigasr.sauc.duration', 'X-Api-Connect-Id': '435abe09-9673-49ae-82d5-538d12be1809'}[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m发送初始化请求: {'app': {'appid': 'test', 'token': 'test'}, 'user': {'uid': 'streaming_asr_service'}, 'request': {'reqid': 'a3c9cb92-9167-4291-aafc-aa81271190e7', 'workflow': 'audio_in,resample,partition,vad,fe,decode,itn,nlu_punctuate', 'show_utterances': True, 'result_type': 'single', 'sequence': 1, 'end_window_size': 200, 'corpus': {'boosting_table_name': '', 'correct_table_name': ''}}, 'audio': {'format': 'pcm', 'codec': 'pcm', 'rate': 16000, 'bits': 16, 'channel': 1, 'sample_rate': 16000}}[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m收到初始化响应: {'payload_msg': {'result': {'text': '你好', 'utterances': [{'definite': True, 'text': '你好'}]}, 'audio_info': {'duration': 100}}}[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+ok
+test_xunfei_old_cleanup_does_not_destroy_new_session (tests.test_bb8_voice_safety_r1.TestStreamSessionResourceIsolation.test_xunfei_old_cleanup_does_not_destroy_new_session) ... [32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m正在连接ASR服务: ws://iat.cn-huabei-1.xf-yun.com/v1?authorization=Y...[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92mASR WebSocket连接已建立[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.xunfei_stream[0m]-[1mINFO[0m-[92m已发送首帧，开始识别[0m
+[32m261128 15:13:09[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+ok
+
+----------------------------------------------------------------------
+Ran 35 tests in 2.677s
+
+OK

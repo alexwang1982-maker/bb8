@@ -1,0 +1,24 @@
+test_assistant_mode_still_forwards_vague_expression (test_semantic_route.BridgeDispatchGateTests.test_assistant_mode_still_forwards_vague_expression) ... [15:12:37] [bridge] semantic_route -> intent=clarify capability=clarify conf=0.62 source=deterministic
+[15:12:37] [bridge] mode-forward dispatched raw='弄一下那个'
+ok
+test_capability_inquiry_never_calls_vision (test_semantic_route.BridgeDispatchGateTests.test_capability_inquiry_never_calls_vision) ... [15:12:37] [bridge] semantic_route -> intent=chat capability=chat_llm conf=0.97 source=deterministic
+ok
+test_visual_question_uses_existing_vision_ability (test_semantic_route.BridgeDispatchGateTests.test_visual_question_uses_existing_vision_ability) ... [15:12:37] [bridge] semantic_route -> intent=vision capability=vision_observe conf=0.93 source=deterministic
+[15:12:37] [bridge] vision_look -> '你看看这个是什么'
+[15:12:37] [bridge] vision observation -> Brain context (274 chars)
+ok
+test_colloquial_phrasing (test_semantic_route.SemanticRouterTests.test_colloquial_phrasing) ... ok
+test_compound_request_clarifies (test_semantic_route.SemanticRouterTests.test_compound_request_clarifies) ... ok
+test_detector_phase_does_not_mutate_last_robot_direction (test_semantic_route.SemanticRouterTests.test_detector_phase_does_not_mutate_last_robot_direction) ... ok
+test_explicit_vision_and_device_guards (test_semantic_route.SemanticRouterTests.test_explicit_vision_and_device_guards) ... ok
+test_model_route_cannot_grant_unauthorized_device_tool (test_semantic_route.SemanticRouterTests.test_model_route_cannot_grant_unauthorized_device_tool) ... ok
+test_parse_model_route_valid_and_invalid (test_semantic_route.SemanticRouterTests.test_parse_model_route_valid_and_invalid) ... ok
+test_same_keyword_different_context (test_semantic_route.SemanticRouterTests.test_same_keyword_different_context) ... ok
+test_task_routes (test_semantic_route.SemanticRouterTests.test_task_routes) ... ok
+test_vague_requests_clarify (test_semantic_route.SemanticRouterTests.test_vague_requests_clarify) ... ok
+test_valid_model_route_can_disambiguate_visual_request (test_semantic_route.SemanticRouterTests.test_valid_model_route_can_disambiguate_visual_request) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.019s
+
+OK
