@@ -10,6 +10,7 @@ but uses a fake Opus decoder and fake ASR/VAD. It is not a human acoustic test.
 __test__ = False
 
 import asyncio
+import base64
 import json
 import logging
 import sys
@@ -47,6 +48,10 @@ import websockets
 
 from core.connection import ConnectionHandler
 from core.providers.asr.base import ASRProviderBase
+from core.providers.asr.aliyun_stream import ASRProvider as AliyunStreamProvider
+from core.providers.asr.aliyunbl_stream import ASRProvider as AliyunBlStreamProvider
+from core.providers.asr.doubao_stream import ASRProvider as DoubaoStreamProvider
+from core.providers.asr.xunfei_stream import ASRProvider as XunfeiStreamProvider
 from core.providers.asr.dto.dto import InterfaceType
 from core.utils.audio_source_gate import AudioSourceGate, unpack_gated_frame
 from core.handle.abortHandle import handleAbortMessage
@@ -543,6 +548,182 @@ class TestRealWebSocketRoute(unittest.IsolatedAsyncioTestCase):
         state = conn.audio_gate.state()
         self.assertEqual(state["counters"]["normal_enqueued"], 0)
         self.assertEqual(state["counters"]["barge_enqueued"], 1)
+
+
+class _FakeResultWs:
+    """最小 STREAM 结果连接：返回一条最终结果，随后模拟服务端关闭。"""
+
+    def __init__(self, message, owner=None):
+        self.message = message
+        self.owner = owner
+        self.recv_count = 0
+        self.closed = False
+
+    async def recv(self):
+        self.recv_count += 1
+        if self.recv_count > 1 and self.owner is not None:
+            # doubao 自动模式在处理结果后不会自行 break；模拟 WS 关闭收口。
+            self.owner.asr_ws = None
+            raise websockets.ConnectionClosed(None, None)
+        return self.message
+
+    async def send(self, data):
+        return None
+
+    async def close(self):
+        self.closed = True
+
+
+class TestStreamGenerationTaskIsolation(unittest.IsolatedAsyncioTestCase):
+    """旧 STREAM 结果任务创建后新轮次启动：两任务各自持有自己的 generation。"""
+
+    def _bind_generation_recorder(self, provider):
+        """记录任务传给 handle_voice_stop 的 generation，并走真实基类校验。"""
+        calls = []
+
+        async def record_and_run(conn, asr_audio_task, source_generation):
+            calls.append(source_generation)
+            return await ASRProviderBase.handle_voice_stop(
+                provider, conn, asr_audio_task, source_generation=source_generation
+            )
+
+        provider.handle_voice_stop = record_and_run
+        provider.speech_to_text_wrapper = AsyncMock(return_value=("新轮文本", None))
+        provider.stop_ws_connection = MagicMock()
+        return calls
+
+    async def _run_concurrent_case(
+        self, provider_cls, config, message, forward_name, parse_response=False
+    ):
+        conn = make_conn()
+        old_provider = provider_cls(config, False)
+        new_provider = provider_cls(config, False)
+
+        _, old_item = conn.enqueue_microphone_audio(b"old-frame" * 16)
+        old_generation, _, _ = unpack_gated_frame(old_item)
+        conn.current_audio_generation = old_generation
+        conn.asr_audio = [b"old-frame"] * 16
+        old_provider.asr_ws = _FakeResultWs(message, old_provider)
+        old_calls = self._bind_generation_recorder(old_provider)
+        if parse_response:
+            old_provider.parse_response = MagicMock(return_value=message)
+
+        # 旧任务只创建 coroutine，不调度执行；此刻连接 generation 仍是旧值。
+        old_task = getattr(old_provider, forward_name)(conn, old_generation)
+
+        # 新会话启动并取得新 generation。
+        conn.audio_gate.rotate("new_round")
+        _, new_item = conn.enqueue_microphone_audio(b"new-frame" * 16)
+        new_generation, _, _ = unpack_gated_frame(new_item)
+        conn.current_audio_generation = new_generation
+        conn.asr_audio = [b"new-frame"] * 16
+        self.assertNotEqual(old_generation, new_generation)
+        new_provider.asr_ws = _FakeResultWs(message, new_provider)
+        new_calls = self._bind_generation_recorder(new_provider)
+        if parse_response:
+            new_provider.parse_response = MagicMock(return_value=message)
+
+        with patch.object(asr_base, "enqueue_asr_report", new=MagicMock()), patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            # 旧任务此时才执行：它必须仍用旧 generation，且不得派发 Brain。
+            await old_task
+            self.assertEqual(old_calls, [old_generation])
+            brain.assert_not_awaited()
+            self.assertTrue(
+                conn.audio_gate.is_current(new_generation),
+                "旧任务 cleanup 不得 rotate/清空新会话 generation",
+            )
+
+            # 新任务用自己的 generation 正常工作。
+            await getattr(new_provider, forward_name)(conn, new_generation)
+            self.assertEqual(new_calls, [new_generation])
+            brain.assert_awaited_once()
+            self.assertEqual(brain.await_args.kwargs["source_generation"], new_generation)
+
+    async def test_doubao_stream_task_keeps_own_generation(self):
+        message = {
+            "payload_msg": {
+                "result": {
+                    "text": "你好",
+                    "utterances": [{"definite": True, "text": "你好"}],
+                },
+                "audio_info": {"duration": 100},
+            }
+        }
+        await self._run_concurrent_case(
+            DoubaoStreamProvider,
+            {"appid": "test", "access_token": "test", "enable_multilingual": False},
+            message,
+            "_forward_asr_results",
+            parse_response=True,
+        )
+
+    async def test_aliyun_stream_task_keeps_own_generation(self):
+        message = json.dumps(
+            {
+                "header": {"name": "SentenceEnd", "status": 20000000},
+                "payload": {"result": "你好"},
+            }
+        )
+        await self._run_concurrent_case(
+            AliyunStreamProvider,
+            {"token": "test-token"},
+            message,
+            "_forward_results",
+        )
+
+    async def test_aliyunbl_stream_task_keeps_own_generation(self):
+        message = json.dumps(
+            {
+                "header": {"event": "result-generated"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "你好",
+                            "sentence_end": True,
+                            "end_time": 123,
+                        }
+                    }
+                },
+            }
+        )
+        await self._run_concurrent_case(
+            AliyunBlStreamProvider, {}, message, "_forward_results"
+        )
+
+    async def test_xunfei_stream_task_keeps_own_generation(self):
+        encoded = base64.b64encode(
+            json.dumps(
+                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False
+            ).encode("utf-8")
+        ).decode("ascii")
+        message = json.dumps(
+            {
+                "header": {"code": 0, "status": 2},
+                "payload": {"result": {"text": encoded}},
+            }
+        )
+        config = {"app_id": "test", "api_key": "test", "api_secret": "test"}
+        await self._run_concurrent_case(
+            XunfeiStreamProvider, config, message, "_forward_results"
+        )
+
+        # 覆写入口也必须把 generation 原样透传给基类。
+        probe_conn = make_conn()
+        _, probe_item = probe_conn.enqueue_microphone_audio(b"probe")
+        probe_generation, _, _ = unpack_gated_frame(probe_item)
+        probe = XunfeiStreamProvider(config, False)
+        probe.asr_ws = None
+        probe.is_processing = False
+        with patch.object(ASRProviderBase, "handle_voice_stop", new=AsyncMock()) as base_hv:
+            await probe.handle_voice_stop(
+                probe_conn, [b"frame"], source_generation=probe_generation
+            )
+            base_hv.assert_awaited_once()
+            self.assertEqual(
+                base_hv.await_args.kwargs["source_generation"], probe_generation
+            )
 
 
 if __name__ == "__main__":

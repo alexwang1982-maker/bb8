@@ -53,8 +53,28 @@ test_stop_clears_speaking_even_when_send_fails (tests.test_bb8_voice_safety_r1.T
 s_speaking_even_when_send_fails) ... ok
 test_playback_frames_over_real_websocket_never_enter_asr_queue (tests.test_bb8_voice_safety_r1.TestRealWebSocketRoute.t
 est_playback_frames_over_real_websocket_never_enter_asr_queue) ... ok
+[32m261128 11:38:15[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:15[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyun_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:15[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+test_aliyun_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_ali
+yun_stream_task_keeps_own_generation) ... ok
+[32m261128 11:38:15[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.aliyunbl_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+test_aliyunbl_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_a
+liyunbl_stream_task_keeps_own_generation) ... ok
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92m识别到文本: 你好[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.doubao_stream[0m]-[1mINFO[0m-[92mASR服务连接已关闭[0m
+test_doubao_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_dou
+bao_stream_task_keeps_own_generation) ... ok
+[32m261128 11:38:16[0m[0.9.8_00000000000000][[94mcore.providers.asr.base[0m]-[1mINFO[0m-[92m识别文本: 新轮文本[0m
+test_xunfei_stream_task_keeps_own_generation (tests.test_bb8_voice_safety_r1.TestStreamGenerationTaskIsolation.test_xun
+fei_stream_task_keeps_own_generation) ... ok
 
 ----------------------------------------------------------------------
-Ran 22 tests in 0.626s
+Ran 26 tests in 1.061s
 
 OK

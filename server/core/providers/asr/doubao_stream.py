@@ -74,9 +74,9 @@ class ASRProvider(ASRProviderBase):
         if audio_have_voice and self.asr_ws is None and not self.is_processing:
             try:
                 self.is_processing = True
-                # 本轮 ASR 会话绑定音频源 generation；结果回调只能用这个值，
-                # 不能回退借用连接上可能已被新一轮 rotate 的当前 generation。
-                self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+                # 本轮 ASR 会话绑定音频源 generation；作为独立参数传给结果任务，
+                # 任务全程只用自己的参数，不读连接当前值或 Provider 共享属性。
+                source_generation = getattr(conn, "current_audio_generation", None)
                 # 建立新的WebSocket连接
                 headers = self.token_auth() if self.auth_method == "token" else None
                 logger.bind(tag=TAG).info(f"正在连接ASR服务，headers: {headers}")
@@ -120,7 +120,9 @@ class ASRProvider(ASRProviderBase):
                     raise e
 
                 # 启动接收ASR结果的异步任务
-                self.forward_task = asyncio.create_task(self._forward_asr_results(conn))
+                self.forward_task = asyncio.create_task(
+                    self._forward_asr_results(conn, source_generation)
+                )
 
                 # 发送缓存的音频数据
                 if conn.asr_audio and len(conn.asr_audio) > 0:
@@ -159,8 +161,8 @@ class ASRProvider(ASRProviderBase):
             except Exception as e:
                 logger.bind(tag=TAG).info(f"发送音频数据时发生错误: {e}")
 
-    async def _forward_asr_results(self, conn: "ConnectionHandler"):
-        source_generation = getattr(self, "_stream_source_generation", None)
+    async def _forward_asr_results(self, conn: "ConnectionHandler", source_generation):
+        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
         try:
             while self.asr_ws and not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
@@ -259,9 +261,10 @@ class ASRProvider(ASRProviderBase):
                 self.asr_ws = None
             self.is_processing = False
             self._is_stopping = False
-            self._stream_source_generation = None
-            # 重置所有音频相关状态
-            conn.reset_audio_states()
+            # 仅当本会话仍是当前轮次时才做连接级收尾。旧会话 cleanup 不得
+            # rotate/清空一个新会话已经拿到的 generation。
+            if conn.audio_gate.is_current(source_generation):
+                conn.reset_audio_states()
 
     def stop_ws_connection(self):
         if self.asr_ws:

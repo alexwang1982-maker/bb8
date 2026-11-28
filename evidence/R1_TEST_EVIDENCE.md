@@ -1,6 +1,6 @@
 # BB-8 R1 测试与验收证据（复审修正后）
 
-## 1. R1 安全测试：22/22 PASS
+## 1. R1 安全测试：26/26 PASS
 
 命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 
@@ -11,7 +11,7 @@ G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe -B -m unittest tests.test_b
 原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 
 ```
-Ran 22 tests in 0.626s
+Ran 26 tests in 1.061s
 OK
 ```
 
@@ -36,6 +36,10 @@ OK
 | | `test_none_generation_is_not_authorization` | `None` 不是有效授权，`is_current(None)=False` 且 STT 不启动 |
 | **最终复审新增：显式 None / STREAM** | `test_explicit_none_rejected_even_when_connection_generation_valid` | 连接 generation 有效但旧回调显式传 `None`：STT、声纹识别、自动注册、Brain 全部拒绝 |
 | | `test_stale_stream_captured_generation_rejected_after_new_round` | STREAM 会话捕获的旧 generation 在新轮次后失效，即使连接当前 generation 有效也不得派发 |
+| **STREAM 任务隔离** | `test_doubao_stream_task_keeps_own_generation` | doubao 旧任务延后执行仍持旧 generation，Brain 不派发；新任务用新 generation 正常派发 |
+| | `test_aliyun_stream_task_keeps_own_generation` | aliyun 同上；旧任务 cleanup 不无效化新 generation |
+| | `test_aliyunbl_stream_task_keeps_own_generation` | aliyunbl 同上 |
+| | `test_xunfei_stream_task_keeps_own_generation` | xunfei 同上，并断言覆写透传 generation 给基类 |
 | **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 | | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 | **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -73,4 +77,4 @@ R1 复审修正已移除 `bridge/bridge.py` 的视觉回灌/3 秒去重改动及
 
 ## 5. 结论
 
-三项复审并发问题及最终复审的显式 `None`/STREAM 旧回调问题均有针对性回归测试且通过（22/22）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
+三轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态）均有针对性回归测试且通过（26/26）；既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。

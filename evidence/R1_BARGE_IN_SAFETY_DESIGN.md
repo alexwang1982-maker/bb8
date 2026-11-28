@@ -26,7 +26,8 @@
 - `reset_audio_states(rotate=True)`（默认）在锁内同时完成 generation 递增、ASR/barge 队列清空、VAD 状态复位、`asr_audio`/`_barge_buf` 清空；`rotate=False` 仅用于 `listen stop` 收尾，通过 `AudioSourceGate.seal()` 在同一锁内清队列但保留本轮 generation，使刚复制出的音频仍属于本轮。
 - `AudioSourceGate.rotate/suppress/open` 的状态读取、generation 递增、双队列清理与 `normal_open` 写入全部在 `_rotate_locked()` 的同一临界区内完成，无锁窗口。
 - `handle_voice_stop()` 使用哨兵区分“未传参数”与“明确传 `None`”：未传才回退连接当前 generation（兼容旧调用）；明确 `None` 立即 fail-closed，绝不回退借用当前 generation。
-- STREAM ASR 在识别会话建立时捕获 `conn.current_audio_generation` 为会话源 generation，结果回调显式传回；`reset/abort` 后该值失效，旧回调不能借用新轮次 generation。
+- STREAM ASR 在识别会话建立时捕获 `conn.current_audio_generation`，作为独立参数传给结果任务；任务全程只用自己的入参，不读连接当前 generation，也不使用 Provider 共享属性。`reset/abort` 后旧回调不能借用新轮次 generation。
+- 四种 STREAM 的 `finally` 只在 `is_current(source_generation)` 时做连接级收尾；旧会话 cleanup 不 rotate/清空新会话 generation。
 - ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 不是有效授权。
 - `handleAbortMessage()` 在进入时记录 playback token + sentence；等待 stop 发送期间若新轮次 TTS 已启动，旧 Abort 不再执行 `clearSpeakStatus()`，因此不会清除新播放态或重新开放音频入口。
 - `clear_queues()` 也清空两个音频队列和 `asr_audio`，保证 abort 路径不残留。

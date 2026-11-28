@@ -121,8 +121,8 @@ class ASRProvider(ASRProviderBase):
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
-        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
-        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+        # 本轮 generation 作为独立参数传给结果任务；任务不读连接当前值或共享属性。
+        source_generation = getattr(conn, "current_audio_generation", None)
         try:
             self.is_processing = True
             # 建立WebSocket连接
@@ -143,7 +143,9 @@ class ASRProvider(ASRProviderBase):
 
             logger.bind(tag=TAG).info("ASR WebSocket连接已建立")
             self.server_ready = False
-            self.forward_task = asyncio.create_task(self._forward_results(conn))
+            self.forward_task = asyncio.create_task(
+                self._forward_results(conn, source_generation)
+            )
 
             # 发送首帧音频
             if conn.asr_audio and len(conn.asr_audio) > 0:
@@ -187,9 +189,8 @@ class ASRProvider(ASRProviderBase):
 
         await self.asr_ws.send(json.dumps(frame_data, ensure_ascii=False))
 
-    async def _forward_results(self, conn: "ConnectionHandler"):
-        """转发识别结果"""
-        source_generation = getattr(self, "_stream_source_generation", None)
+    async def _forward_results(self, conn: "ConnectionHandler", source_generation):
+        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
         try:
             while not conn.stop_event.is_set():
                 try:
@@ -250,10 +251,11 @@ class ASRProvider(ASRProviderBase):
             if hasattr(e, "__cause__") and e.__cause__:
                 logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
         finally:
-            # 清理连接资源
+            # 清理连接资源；generation 只存在于任务入参。旧会话 cleanup 不得
+            # rotate/清空新会话的 generation，因此仅在本会话仍是当前轮次时收尾。
             await self._cleanup()
-            self._stream_source_generation = None
-            conn.reset_audio_states()
+            if conn.audio_gate.is_current(source_generation):
+                conn.reset_audio_states()
 
     async def handle_voice_stop(
         self,

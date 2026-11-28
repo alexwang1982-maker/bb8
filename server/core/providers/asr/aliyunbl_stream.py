@@ -76,8 +76,8 @@ class ASRProvider(ASRProviderBase):
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
-        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
-        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+        # 本轮 generation 作为独立参数传给结果任务；任务不读连接当前值或共享属性。
+        source_generation = getattr(conn, "current_audio_generation", None)
         try:
             # 如果为手动模式,设置超时时长为最大值
             if conn.client_listen_mode == "manual":
@@ -105,7 +105,9 @@ class ASRProvider(ASRProviderBase):
             logger.bind(tag=TAG).debug("WebSocket连接建立成功")
 
             self.server_ready = False
-            self.forward_task = asyncio.create_task(self._forward_results(conn))
+            self.forward_task = asyncio.create_task(
+                self._forward_results(conn, source_generation)
+            )
 
             # 发送run-task指令
             run_task_msg = self._build_run_task_message()
@@ -156,9 +158,8 @@ class ASRProvider(ASRProviderBase):
 
         return message
 
-    async def _forward_results(self, conn: "ConnectionHandler"):
-        """转发识别结果"""
-        source_generation = getattr(self, "_stream_source_generation", None)
+    async def _forward_results(self, conn: "ConnectionHandler", source_generation):
+        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
         try:
             while not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
@@ -244,10 +245,11 @@ class ASRProvider(ASRProviderBase):
         except Exception as e:
             logger.bind(tag=TAG).error(f"结果转发失败: {str(e)}")
         finally:
-            # 清理连接的音频缓存
+            # 清理连接资源；generation 只存在于任务入参。旧会话 cleanup 不得
+            # rotate/清空新会话的 generation，因此仅在本会话仍是当前轮次时收尾。
             await self._cleanup()
-            self._stream_source_generation = None
-            conn.reset_audio_states()
+            if conn.audio_gate.is_current(source_generation):
+                conn.reset_audio_states()
 
     async def _send_stop_request(self):
         """发送停止请求(用于手动模式停止录音)"""

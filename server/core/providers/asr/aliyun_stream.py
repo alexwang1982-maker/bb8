@@ -149,8 +149,8 @@ class ASRProvider(ASRProviderBase):
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
-        # 绑定本轮音频源 generation；结果回调不得借用连接上已 rotate 的值。
-        self._stream_source_generation = getattr(conn, "current_audio_generation", None)
+        # 本轮 generation 作为独立参数传给结果任务；任务不读连接当前值或共享属性。
+        source_generation = getattr(conn, "current_audio_generation", None)
         if self._is_token_expired():
             self._refresh_token()
         
@@ -171,7 +171,9 @@ class ASRProvider(ASRProviderBase):
 
         self.is_processing = True
         self.server_ready = False  # 重置服务器准备状态
-        self.forward_task = asyncio.create_task(self._forward_results(conn))
+        self.forward_task = asyncio.create_task(
+            self._forward_results(conn, source_generation)
+        )
 
         # 发送开始请求
         start_request = {
@@ -195,9 +197,8 @@ class ASRProvider(ASRProviderBase):
         await self.asr_ws.send(json.dumps(start_request, ensure_ascii=False))
         logger.bind(tag=TAG).debug("已发送开始请求，等待服务器准备...")
 
-    async def _forward_results(self, conn: "ConnectionHandler"):
-        """转发识别结果"""
-        source_generation = getattr(self, "_stream_source_generation", None)
+    async def _forward_results(self, conn: "ConnectionHandler", source_generation):
+        """结果任务只使用创建时传入的 generation，不读取任何共享状态。"""
         try:
             while not conn.stop_event.is_set():
                 # 获取当前连接的音频数据
@@ -277,10 +278,11 @@ class ASRProvider(ASRProviderBase):
         except Exception as e:
             logger.bind(tag=TAG).error(f"结果转发失败: {str(e)}")
         finally:
-            # 清理连接的音频缓存
+            # 清理连接资源；generation 只存在于任务入参。旧会话 cleanup 不得
+            # rotate/清空新会话的 generation，因此仅在本会话仍是当前轮次时收尾。
             await self._cleanup()
-            self._stream_source_generation = None
-            conn.reset_audio_states()
+            if conn.audio_gate.is_current(source_generation):
+                conn.reset_audio_states()
 
     async def _send_stop_request(self):
         """发送停止识别请求（不关闭连接）"""
