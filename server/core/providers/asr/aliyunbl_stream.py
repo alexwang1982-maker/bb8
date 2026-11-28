@@ -81,6 +81,7 @@ class ASRProvider(ASRProviderBase):
         source_generation = getattr(conn, "current_audio_generation", None)
         session_ws = None
         session_task_id = None
+        session_reservation = None
         try:
             # 如果为手动模式,设置超时时长为最大值
             if conn.client_listen_mode == "manual":
@@ -90,7 +91,9 @@ class ASRProvider(ASRProviderBase):
             # connect 返回前先捕获本轮 task_id，并预留会话归属，避免旧 cleanup 清空。
             session_task_id = uuid.uuid4().hex
             self.task_id = session_task_id
-            self._session_reservation = object()
+            # token 是本轮独有局部变量，异常清理只释放自己持有的那一个。
+            session_reservation = object()
+            self._session_reservation = session_reservation
 
             # 建立WebSocket连接；会话 WS/task_id 是本轮独有。
             headers = {
@@ -108,7 +111,8 @@ class ASRProvider(ASRProviderBase):
                 close_timeout=5,
             )
             self.asr_ws = session_ws
-            self._session_reservation = None
+            if self._session_reservation is session_reservation:
+                self._session_reservation = None
 
             logger.bind(tag=TAG).debug("WebSocket连接建立成功")
 
@@ -126,14 +130,16 @@ class ASRProvider(ASRProviderBase):
             logger.bind(tag=TAG).error(f"建立ASR连接失败: {str(e)}")
             if session_ws is not None:
                 await session_ws.close()
-            self._session_reservation = None
-            # asr_ws 为空但有新会话预留时，不得清掉尚未 connect 返回的新轮次状态。
-            if self.asr_ws is session_ws or (
-                self.asr_ws is None and self._session_reservation is None
-            ):
+            # close() 等待期间新会话可能已预留；只释放自己的 token，且仅在
+            # WebSocket 与 reservation 都仍属于本轮时才清共享状态（含 task_id）。
+            owns_reservation = self._session_reservation is session_reservation
+            owns_ws = self.asr_ws is session_ws
+            if owns_reservation and owns_ws:
                 self.asr_ws = None
                 self.is_processing = False
                 self.task_id = None
+            if owns_reservation:
+                self._session_reservation = None
             raise
 
     def _build_run_task_message(self, task_id=None) -> dict:

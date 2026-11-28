@@ -30,6 +30,7 @@
 - 四种 STREAM 的 `finally` 只在 `is_current(source_generation)` 时做连接级收尾；旧会话 cleanup 不 rotate/清空新会话 generation。
 - STREAM 会话 WS/task_id 也是会话局部对象：结果任务、停止请求与 `_cleanup()` 均不借用 `self.asr_ws` / `self.task_id`；`await close()` 后按 WS 归属确认才清共享状态，旧 cleanup 不关闭/清空新会话的 `asr_ws`、`forward_task`、`is_processing`。
 - doubao / aliyunbl / xunfei 在 `websockets.connect()` 之前（任何 await 之前）写入会话局部 `_session_reservation` 标记；`_cleanup()` 仅在 `asr_ws` 仍为本会话 WS，或 `asr_ws is None` 且无新会话预留时清共享状态。connect 窗口内旧 cleanup 不能清空新会话已写入的 `is_processing` / `forward_task` / 百炼 `task_id`；百炼 run-task 使用 connect 前捕获的局部 task_id。aliyun 的共享状态写入全部在 connect 之后，确认无同类时序，未改动。
+- xunfei / aliyunbl 的 `_start_recognition()` 异常路径持有本轮局部 `session_reservation` token：`await close()` 后只释放自己的 token；只有 WebSocket 与 reservation 同时仍属于本轮才清共享状态（含百炼 `task_id`）。旧会话异常清理不会释放等待 connect 的新会话 token。
 - ASR、声纹识别、自动注册与最终 `startToChat()` 前均重新校验 generation；`None` 不是有效授权。
 - `handleAbortMessage()` 在进入时记录 playback token + sentence；等待 stop 发送期间若新轮次 TTS 已启动，旧 Abort 不再执行 `clearSpeakStatus()`，因此不会清除新播放态或重新开放音频入口。
 - `clear_queues()` 也清空两个音频队列和 `asr_audio`，保证 abort 路径不残留。

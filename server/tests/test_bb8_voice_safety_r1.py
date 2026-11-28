@@ -756,6 +756,28 @@ class _BlockingCloseWs:
             await self.close_gate.wait()
 
 
+class _FailingOldWs:
+    """旧会话异常路径的 WebSocket：send 抛错，close 可暂停，recv 保持挂起。"""
+
+    def __init__(self, close_gate):
+        self.close_gate = close_gate
+        self.close_started = asyncio.Event()
+        self.recv_gate = asyncio.Event()
+        self.closed = False
+
+    async def recv(self):
+        await self.recv_gate.wait()
+        raise websockets.ConnectionClosed(None, None)
+
+    async def send(self, data):
+        raise RuntimeError("旧会话发送失败")
+
+    async def close(self):
+        self.closed = True
+        self.close_started.set()
+        await self.close_gate.wait()
+
+
 class TestStreamSessionResourceIsolation(unittest.IsolatedAsyncioTestCase):
     """同一 Provider 实例：旧会话 cleanup 不得关闭/清空新会话资源。"""
 
@@ -1127,6 +1149,159 @@ class TestStreamConnectReservationIsolation(unittest.IsolatedAsyncioTestCase):
             message,
             "_forward_results",
         )
+
+
+class TestStreamExceptionCleanupReservation(unittest.IsolatedAsyncioTestCase):
+    """旧会话异常 close 等待期间，新会话 connect 预留不得被释放。"""
+
+    async def _run_case(self, provider_cls, config, message):
+        conn = make_conn()
+        provider = provider_cls(config, False)
+        conn.asr = provider
+
+        conn.audio_gate.rotate("old_round")
+        _, old_item = conn.enqueue_microphone_audio(b"old-frame" * 16)
+        old_generation, _, _ = unpack_gated_frame(old_item)
+        conn.current_audio_generation = old_generation
+        conn.asr_audio = [b"old-frame"] * 16
+
+        old_close_gate = asyncio.Event()
+        old_ws = _FailingOldWs(old_close_gate)
+
+        new_recv_gate = asyncio.Event()
+        new_ws = _BlockingCloseWs([message], recv_gate=new_recv_gate, recv_gate_after=0)
+        connect_started = asyncio.Event()
+        connect_gate = asyncio.Event()
+        connect_calls = 0
+
+        async def gated_connect(*args, **kwargs):
+            nonlocal connect_calls
+            connect_calls += 1
+            if connect_calls == 1:
+                return old_ws
+            connect_started.set()
+            await connect_gate.wait()
+            return new_ws
+
+        calls = []
+
+        async def handle_voice_stop(c, audio, source_generation=SOURCE_GENERATION_UNSET):
+            calls.append(source_generation)
+            return await ASRProviderBase.handle_voice_stop(
+                provider, c, audio, source_generation=source_generation
+            )
+
+        provider.handle_voice_stop = handle_voice_stop
+        provider.speech_to_text_wrapper = AsyncMock(return_value=("新轮文本", None))
+
+        with patch.object(
+            websockets, "connect", new=gated_connect
+        ), patch.object(
+            asr_base, "enqueue_asr_report", new=MagicMock()
+        ), patch.object(
+            asr_base, "startToChat", new=AsyncMock()
+        ) as brain:
+            # 旧会话直接进入 _start_recognition：首帧/run-task 发送失败后暂停在 close。
+            old_task = asyncio.create_task(provider._start_recognition(conn))
+            await asyncio.wait_for(old_ws.close_started.wait(), 2)
+            old_forward_task = provider.forward_task
+            self.assertIsNotNone(old_forward_task)
+            self.assertIsNone(provider._session_reservation)
+            old_task_id = getattr(provider, "task_id", None)
+
+            # 停止路径释放旧会话，新轮次 rotate 后启动新会话。
+            provider.stop_ws_connection()
+            provider.asr_ws = None
+            provider.is_processing = False
+            conn.audio_gate.rotate("new_round")
+            _, new_item = conn.enqueue_microphone_audio(b"new-frame" * 16)
+            new_generation, _, _ = unpack_gated_frame(new_item)
+            conn.current_audio_generation = new_generation
+            conn.asr_audio = [b"new-frame"] * 16
+            conn.client_voice_stop = False
+
+            new_session_task = asyncio.create_task(
+                provider.receive_audio(conn, b"new-frame", True)
+            )
+            # 新会话进入 connect 等待，asr_ws 仍为空但已持有独立 token。
+            await asyncio.wait_for(connect_started.wait(), 2)
+            self.assertIsNone(provider.asr_ws)
+            self.assertTrue(provider.is_processing)
+            reserved_token = provider._session_reservation
+            self.assertIsNotNone(reserved_token)
+            reserved_task_id = getattr(provider, "task_id", None)
+            if isinstance(provider, AliyunBlStreamProvider):
+                self.assertIsNotNone(reserved_task_id)
+                self.assertNotEqual(reserved_task_id, old_task_id)
+
+            # 释放旧 close：异常清理不得释放新 token 或清空新会话状态。
+            old_close_gate.set()
+            with self.assertRaises(RuntimeError):
+                await asyncio.wait_for(old_task, 2)
+            self.assertIs(provider.asr_ws, None)
+            self.assertIs(provider._session_reservation, reserved_token)
+            self.assertTrue(provider.is_processing)
+            self.assertIs(provider.forward_task, old_forward_task)
+            if isinstance(provider, AliyunBlStreamProvider):
+                self.assertEqual(provider.task_id, reserved_task_id)
+
+            # 新 connect 返回：新会话完成建立并保有全部状态。
+            connect_gate.set()
+            await asyncio.wait_for(new_session_task, 2)
+            self.assertIs(provider.asr_ws, new_ws)
+            self.assertTrue(provider.is_processing)
+            self.assertIsNone(provider._session_reservation)
+            self.assertIsNotNone(provider.forward_task)
+            new_task = provider.forward_task
+            self.assertFalse(new_task.done())
+            if isinstance(provider, AliyunBlStreamProvider):
+                self.assertEqual(provider.task_id, reserved_task_id)
+
+            # 新任务正常完成并派发 Brain。
+            new_recv_gate.set()
+            await asyncio.wait_for(new_task, 5)
+            self.assertEqual(calls, [new_generation])
+            brain.assert_awaited_once()
+            self.assertEqual(brain.await_args.kwargs["source_generation"], new_generation)
+
+            # 收尾旧结果任务，避免残留 pending task。
+            old_ws.recv_gate.set()
+            await asyncio.wait_for(old_forward_task, 2)
+
+    async def test_xunfei_exception_cleanup_keeps_new_reservation(self):
+        encoded = base64.b64encode(
+            json.dumps(
+                {"ws": [{"cw": [{"w": "你好"}]}]}, ensure_ascii=False
+            ).encode("utf-8")
+        ).decode("ascii")
+        message = json.dumps(
+            {
+                "header": {"code": 0, "status": 2},
+                "payload": {"result": {"text": encoded}},
+            }
+        )
+        await self._run_case(
+            XunfeiStreamProvider,
+            {"app_id": "test", "api_key": "test", "api_secret": "test"},
+            message,
+        )
+
+    async def test_aliyunbl_exception_cleanup_keeps_new_reservation(self):
+        message = json.dumps(
+            {
+                "header": {"event": "result-generated"},
+                "payload": {
+                    "output": {
+                        "sentence": {
+                            "text": "你好",
+                            "sentence_end": True,
+                            "end_time": 123,
+                        }
+                    }
+                },
+            }
+        )
+        await self._run_case(AliyunBlStreamProvider, {}, message)
 
 
 if __name__ == "__main__":

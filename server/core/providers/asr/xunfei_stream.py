@@ -125,10 +125,13 @@ class ASRProvider(ASRProviderBase):
         # 本轮 generation 作为独立参数传给结果任务；任务不读连接当前值或共享属性。
         source_generation = getattr(conn, "current_audio_generation", None)
         session_ws = None
+        session_reservation = None
         try:
             self.is_processing = True
             # connect 返回前 asr_ws 仍为空；先预留会话归属，旧 cleanup 不得清掉本轮状态。
-            self._session_reservation = object()
+            # token 是本轮独有局部变量，异常清理只释放自己持有的那一个。
+            session_reservation = object()
+            self._session_reservation = session_reservation
             # 建立WebSocket连接
             ws_url = self.create_url()
             logger.bind(tag=TAG).info(f"正在连接ASR服务: {ws_url[:50]}...")
@@ -145,7 +148,8 @@ class ASRProvider(ASRProviderBase):
                 close_timeout=10,
             )
             self.asr_ws = session_ws
-            self._session_reservation = None
+            if self._session_reservation is session_reservation:
+                self._session_reservation = None
 
             logger.bind(tag=TAG).info("ASR WebSocket连接已建立")
             self.server_ready = False
@@ -174,10 +178,15 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"错误原因: {str(e.__cause__)}")
             if session_ws is not None:
                 await session_ws.close()
-            self._session_reservation = None
-            if self.asr_ws is session_ws or self.asr_ws is None:
+            # close() 等待期间新会话可能已预留；只释放自己的 token，且仅在
+            # WebSocket 与 reservation 都仍属于本轮时才清共享状态。
+            owns_reservation = self._session_reservation is session_reservation
+            owns_ws = self.asr_ws is session_ws
+            if owns_reservation and owns_ws:
                 self.asr_ws = None
                 self.is_processing = False
+            if owns_reservation:
+                self._session_reservation = None
             raise
 
     async def _send_audio_frame(self, audio_data: bytes, status: int, ws=None):

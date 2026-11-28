@@ -54,6 +54,12 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 - 新增 3 项确定性异步交错回归：旧 cleanup 暂停在 close → 新会话 connect 暂停且尚未返回（`asr_ws` 仍为 None）→ 释放旧 close → 断言 `is_processing` / 预留标记 / `forward_task` / 百炼 `task_id` 未被清空 → 释放 connect → 新会话完成建立并正常派发 Brain。
 - **aliyun 无同类问题**：`_start_recognition()` 把 `self.asr_ws` / `self.task_id` / `is_processing` / `server_ready` / `forward_task` 的全部写入放在 `await websockets.connect()` 返回之后；connect 窗口内 Provider 仍处于干净的空闲态，旧 cleanup 即使清空也只是重复置空，新会话返回后会重新提交全部状态。因此本轮不改 aliyun。
 
+### 2.7 STREAM 异常清理只释放本轮 token（最终复审）
+
+- 范围仅 `xunfei_stream.py` 与 `aliyunbl_stream.py`：每轮会话在建立前创建独立局部 `session_reservation` token，并写入 `self._session_reservation`；成功路径也只在该 token 仍归本轮时才清除。
+- 两处 `_start_recognition()` 的 `except` 在 `await session_ws.close()` 之后不再无条件写 `self._session_reservation = None`：只有 token 仍属于本轮才释放；只有 **WebSocket 与 reservation 同时仍属于本轮**时才清空 `asr_ws` / `is_processing` / `forward_task` / `task_id`。
+- 新增 2 项确定性异步交错回归：旧会话异常 send 失败并暂停在 close → 停止路径释放旧会话 → 新会话在 connect 等待中预留 token → 释放旧 close → 断言新 token、`is_processing`、百炼 `task_id` 均未被清除 → connect 返回后新会话完成并派发 Brain。
+
 ## 3. 视觉范围移除
 
 | 项 | 处理 |
@@ -67,9 +73,9 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 
 ## 4. 测试证据
 
-### 4.1 R1 新增测试：33/33 PASS
+### 4.1 R1 新增测试：35/35 PASS
 
-`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 33 tests in 2.459s` / `OK`。较上一版（30 项）新增 3 项 STREAM connect 窗口交错回归：
+`R1_VOICE_SAFETY_TEST_OUTPUT.txt`：`Ran 35 tests in 2.813s` / `OK`。较上一版（33 项）新增 2 项 STREAM 异常清理 token 归属交错回归；输出中 3 条 ERROR 为测试故意注入的旧会话 send 失败日志，无 unittest FAIL / Traceback：
 
 | 用例 | 断言 |
 | --- | --- |
@@ -90,12 +96,14 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 | **`test_doubao_connect_window_is_not_cleared_by_old_cleanup`** | doubao：新会话 connect 暂停且 `asr_ws` 为 None 时旧 cleanup 返回，预留状态不被清空；connect 后正常完成 |
 | **`test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup`** | aliyunbl：同上，并断言 connect 前捕获的局部 `task_id` 未被清空且 run-task 使用该局部值 |
 | **`test_xunfei_connect_window_is_not_cleared_by_old_cleanup`** | xunfei：同上 |
+| **`test_xunfei_exception_cleanup_keeps_new_reservation`** | 讯飞：旧异常 close 暂停时新会话预留；释放旧 close 后新 token/is_processing 未被清除，connect 后正常派发 Brain |
+| **`test_aliyunbl_exception_cleanup_keeps_new_reservation`** | 百炼：同上，并断言新 task_id 未被旧异常清理清空 |
 | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清新 token 播放态，入口保持关闭 |
 | `test_abort_without_new_round_still_clears` | 正常 Abort 仍收口 |
 | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
 | `test_concurrent_gate_changes_keep_generation_consistent` | 6 线程 × 300 次并发变更 generation 一致 |
 
-（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、STREAM 会话资源隔离 4 项、STREAM connect 窗口隔离 3 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 33 项。）
+（generation 生命周期 6 项、STREAM 任务 generation 隔离 4 项、STREAM 会话资源隔离 4 项、STREAM connect 窗口隔离 3 项、STREAM 异常清理 token 归属 2 项、Abort 2 项、锁原子性 2 项；其余 12 项为门控/入口/TTS/真实 WebSocket，合计 35 项。）
 
 ### 4.2 既有安全回归：基线固有 FAIL + 挂起
 
@@ -110,11 +118,11 @@ R1 只交付语音安全功能。本轮视觉回灌/3 秒去重改动与对应�
 | 文件 | 内容 |
 | --- | --- |
 | `R1_FULL_DIFF.patch` | 从基线 `8197bbb` 到最终工作副本的完整 diff（不含补丁文件自身，避免自引用） |
-| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 33 项测试原始输出 |
+| `R1_VOICE_SAFETY_TEST_OUTPUT.txt` | R1 35 项测试原始输出 |
 | `R1_EXISTING_SAFETY_TEST_OUTPUT.txt` | 既有安全套件 FAIL/挂起原始记录 |
 | `R1_TEST_EVIDENCE.md` | 测试覆盖与验收边界 |
 | `WORKCOPY_AFTER_SHA256.csv` | 最终工作副本关键文件 size + SHA256 |
-| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含五轮复审并发修正） |
+| `R1_BARGE_IN_SAFETY_DESIGN.md` | 门控设计（含六轮复审并发修正） |
 | `R1_BASELINE_AND_INSTANCES.md` | 基线与运行态盘点（只读） |
 | `R1_VOICEPRINT_AUTHORIZATION_AUDIT.md` | 声纹/授权链审计 |
 | `R1_KEY_INJECTION_AUDIT.md` | 密钥注入只读审计 |

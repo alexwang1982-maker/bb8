@@ -1,6 +1,6 @@
 # BB-8 R1 测试与验收证据（复审修正后）
 
-## 1. R1 安全测试：33/33 PASS
+## 1. R1 安全测试：35/35 PASS
 
 命令（受控副本 `server/` 目录，生产 `.venv2`，`-B` 禁止写 pyc）：
 
@@ -11,11 +11,11 @@ G:\openmuse\xiaozhi-server\.venv2\Scripts\python.exe -B -m unittest tests.test_b
 原始输出：`R1_VOICE_SAFETY_TEST_OUTPUT.txt`
 
 ```
-Ran 33 tests in 2.459s
+Ran 35 tests in 2.813s
 OK
 ```
 
-输出中无 ERROR / FAIL 日志。覆盖点：
+无 unittest 层面的 FAIL / Traceback。输出中的 3 条 ERROR 日志来自异常清理测试故意注入的旧会话 send 失败（建立 ASR 连接失败 / finish-task 失败），属预期场景，不是测试失败。覆盖点：
 
 | 分组 | 用例 | 覆盖点 |
 | --- | --- | --- |
@@ -47,6 +47,8 @@ OK
 | **最终复审：STREAM connect 窗口隔离** | `test_doubao_connect_window_is_not_cleared_by_old_cleanup` | 新会话 connect 暂停且 `asr_ws` 为 None；旧 cleanup 返回后预留状态未被清空，connect 后正常完成并派发 Brain |
 | | `test_aliyunbl_connect_window_is_not_cleared_by_old_cleanup` | 同上；并断言 connect 前捕获的局部 `task_id` 未被清空且 run-task 使用该局部值 |
 | | `test_xunfei_connect_window_is_not_cleared_by_old_cleanup` | 同上 |
+| **最终复审：异常清理 token 归属** | `test_xunfei_exception_cleanup_keeps_new_reservation` | 旧会话异常关闭暂停时新会话预留 token；释放旧 close 后新 token/is_processing 未被清除，connect 后正常派发 Brain |
+| | `test_aliyunbl_exception_cleanup_keeps_new_reservation` | 同上；并断言新 task_id 未被旧异常清理清空 |
 | **复审新增：Abort 轮次隔离** | `test_stale_abort_does_not_clear_new_playback` | 旧 Abort 不清除新 token/sentence 的播放态，音频入口保持关闭 |
 | | `test_abort_without_new_round_still_clears` | 无新轮次时 Abort 正常收口 |
 | **复审新增：门控原子性** | `test_rotate_holds_lock_for_whole_state_change` | `rotate()` 全程持锁 |
@@ -84,4 +86,4 @@ R1 复审修正已移除 `bridge/bridge.py` 的视觉回灌/3 秒去重改动及
 
 ## 5. 结论
 
-五轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态；STREAM 旧 cleanup 破坏新会话资源；STREAM connect 返回前旧 cleanup 清空新会话预留状态）均有针对性回归测试且通过（33/33）。本轮仅改 doubao / aliyunbl / xunfei；aliyun 的共享状态写入全部在 connect 之后，确认无同类时序问题，未改动。既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
+六轮复审问题（listen stop generation、Abort 轮次隔离、门控原子性；显式 `None`/STREAM 旧回调；STREAM 结果任务 generation 共享竞态；STREAM 旧 cleanup 破坏新会话资源；STREAM connect 返回前旧 cleanup 清空新会话预留状态；STREAM 异常清理无条件释放新会话 token）均有针对性回归测试且通过（35/35）。本轮仅改 xunfei / aliyunbl 的异常清理 token 归属。既有安全套件的失败/挂起原始记录保留，如实记录为基线固有；R1 不再包含视觉功能。部署仍待批准，门禁状态见 `R1_DEPLOYMENT_ROLLBACK_PLAN.md`。
